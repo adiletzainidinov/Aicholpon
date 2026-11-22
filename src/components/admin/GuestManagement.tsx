@@ -12,7 +12,7 @@ const status = (g: Guest) =>
 export function GuestManagement({ guests, reload, onError }: { guests: Guest[]; reload: () => Promise<void>; onError: (e: unknown) => void }) {
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
@@ -33,10 +33,10 @@ export function GuestManagement({ guests, reload, onError }: { guests: Guest[]; 
     try {
       await fn();
       await reload();
-      if (ok) setMsg(ok);
+      if (ok) setMsg({ text: ok, ok: true });
     } catch (e) {
       onError(e);
-      setMsg(e instanceof Error ? e.message : 'Ошибка');
+      setMsg({ text: e instanceof Error ? e.message : 'Ошибка', ok: false });
     } finally {
       setBusy(false);
     }
@@ -88,12 +88,12 @@ export function GuestManagement({ guests, reload, onError }: { guests: Guest[]; 
         <form onSubmit={create} className="flex flex-col gap-2 sm:flex-row">
           <input className="adm-input flex-1" value={name} onChange={(e) => setName(e.target.value)} placeholder="Имя гостя или семьи" maxLength={120} required aria-label="Имя гостя" />
           <button className="adm-btn" disabled={busy}>
-            Создать ссылку
+            {busy ? 'Сохраняем…' : 'Создать ссылку'}
           </button>
         </form>
         {msg && (
-          <p className="mt-2 text-[14px] text-[#276c49]" role="status">
-            {msg}
+          <p className={`mt-2 text-[14px] ${msg.ok ? 'text-[#276c49]' : 'text-[#aa3446]'}`} role={msg.ok ? 'status' : 'alert'}>
+            {msg.text}
           </p>
         )}
       </div>
@@ -118,6 +118,11 @@ export function GuestManagement({ guests, reload, onError }: { guests: Guest[]; 
       </div>
       <p className="text-[13px] text-[#6e7f9e]">Показано: {shown.length}</p>
 
+      {shown.length === 0 && (
+        <p className="rounded-2xl border border-dashed border-[#d5deef] p-6 text-center text-[14px] text-[#8a97b3]">
+          {guests.length === 0 ? 'Приглашений пока нет — создайте первое выше.' : 'По этому запросу никого не найдено.'}
+        </p>
+      )}
       <ul className="m-0 grid grid-cols-1 gap-3 p-0" data-testid="guest-list">
         {shown.map((g) => {
           const s = status(g);

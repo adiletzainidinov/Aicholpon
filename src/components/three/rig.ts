@@ -47,8 +47,10 @@ export function createRig(): Rig {
 export function layoutRig(rig: Rig, aspect: number, viewportPx: number) {
   rig.aspect = aspect;
   rig.viewportPx = Math.max(1, viewportPx);
-  rig.introDistance = fitDistance(ENV.W + 0.55, ENV.H + 0.75, aspect);
-  rig.cardDistance = fitDistance(ENV.CARD_W + 0.32, ENV.CARD_H + 0.42, aspect);
+  // landscape phones: leave room above/below for the title, the hint and the scroll cue
+  const extra = aspect > 1.2 ? 0.95 : 0;
+  rig.introDistance = fitDistance(ENV.W + 0.55, ENV.H + 0.75 + extra, aspect);
+  rig.cardDistance = fitDistance(ENV.CARD_W + 0.32, ENV.CARD_H + 0.42 + extra * 1.25, aspect);
 }
 
 export function introTarget(rig: Rig) {

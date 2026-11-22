@@ -41,11 +41,17 @@ export default function InvitationExperience({ children, liteDecor }: { children
   const [guest, setGuest] = useState<GuestState>({ token: null, name: null, status: 'none' });
   const api = useRef<SceneApi | null>(null);
   const readyWaiters = useRef<(() => void)[]>([]);
+  const phaseRef = useRef<Phase>('intro');
+  phaseRef.current = phase;
+  const musicWanted = useRef(false);
 
   // ---- boot: quality tier, guest, analytics ----
   useEffect(() => {
     const root = document.documentElement;
     root.classList.add('locked');
+    // the intro always starts at the top; don't let the browser restore an old scroll position
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+    window.scrollTo(0, 0);
     const q = detectQuality();
     setQuality(q);
     let idle = 0;
@@ -77,6 +83,11 @@ export default function InvitationExperience({ children, liteDecor }: { children
   // ---- 3D scene lifecycle ----
   const onReady = useCallback((sceneApi: SceneApi) => {
     api.current = sceneApi;
+    // 3D arrived after the guest already opened the 2D envelope (slow network): show the opened state
+    if (phaseRef.current !== 'intro' && readyWaiters.current.length === 0) {
+      sceneApi.finish();
+      sceneApi.setScroll(window.scrollY, window.innerHeight);
+    }
     if (new URLSearchParams(location.search).get('debug') === '1') {
       (window as unknown as { __scene?: SceneApi }).__scene = sceneApi;
     }
@@ -136,6 +147,7 @@ export default function InvitationExperience({ children, liteDecor }: { children
     if (phase !== 'intro') return;
     setPhase('opening');
     track('open', guest.token);
+    musicWanted.current = true;
     void playMusic().then(setMusic);
     // iOS needs an explicit permission for motion parallax; ask within the gesture
     const DOE = window.DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> } | undefined;
@@ -144,6 +156,7 @@ export default function InvitationExperience({ children, liteDecor }: { children
     // if the 3D scene is still loading, give it a moment instead of falling back immediately
     if (!api.current && mount3D) {
       await Promise.race([new Promise<void>((r) => readyWaiters.current.push(r)), wait(1800)]);
+      readyWaiters.current = [];
     }
     if (api.current) {
       await api.current.open();
@@ -154,11 +167,27 @@ export default function InvitationExperience({ children, liteDecor }: { children
     finishOpening();
   }, [phase, guest.token, mount3D, finishOpening]);
 
+  // the button follows what the guest sees (and asked for), not the media element's transient state
   const toggleMusic = useCallback(async () => {
-    if (isMusicPlaying()) {
+    if (musicWanted.current && (isMusicPlaying() || music)) {
+      musicWanted.current = false;
       pauseMusic();
       setMusic(false);
-    } else setMusic(await playMusic());
+    } else {
+      musicWanted.current = true;
+      setMusic(await playMusic());
+    }
+  }, [music]);
+
+  // pause the music while the tab is in the background, resume when the guest returns
+  useEffect(() => {
+    const onVis = () => {
+      if (!musicWanted.current) return;
+      if (document.hidden) pauseMusic();
+      else void playMusic().then(setMusic);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
   }, []);
 
   const is3D = quality !== null && quality !== 'lite';
@@ -184,10 +213,10 @@ export default function InvitationExperience({ children, liteDecor }: { children
         <button
           type="button"
           onClick={open}
-          className="absolute inset-0 z-10 flex cursor-pointer flex-col items-center justify-between border-0 bg-transparent px-6 pb-[max(28px,env(safe-area-inset-bottom))] pt-[max(34px,env(safe-area-inset-top))]"
+          className="intro-btn absolute inset-0 z-10 flex cursor-pointer flex-col items-center justify-between border-0 bg-transparent px-6 pb-[max(28px,env(safe-area-inset-bottom))] pt-[max(34px,env(safe-area-inset-top))]"
           aria-label="Чакырууну ачуу"
         >
-          <span className="text-center transition-opacity duration-700" style={{ opacity: phase === 'intro' ? 1 : 0 }}>
+          <span className="intro-title text-center transition-opacity duration-700" style={{ opacity: phase === 'intro' ? 1 : 0 }}>
             <span className="eyebrow block">Кыз узатуу · 2026</span>
             <span className="font-script halo mt-1 block text-[44px] leading-tight text-deep">Айчолпон</span>
           </span>

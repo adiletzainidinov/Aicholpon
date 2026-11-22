@@ -185,17 +185,39 @@ export interface SurfaceSet {
   dispose(): void;
 }
 
+/**
+ * three.js reads roughness from the G channel and metalness from the B channel, so both
+ * grayscale masks are packed into one texture (one upload and half the GPU memory).
+ */
+function packRoughMetal(rough: HTMLCanvasElement, metal?: HTMLCanvasElement) {
+  const { c, ctx } = canvas(rough.width, rough.height);
+  const channel = (src: HTMLCanvasElement, rgb: string) => {
+    const tmp = canvas(src.width, src.height);
+    tmp.ctx.drawImage(src, 0, 0);
+    tmp.ctx.globalCompositeOperation = 'multiply';
+    tmp.ctx.fillStyle = rgb;
+    tmp.ctx.fillRect(0, 0, src.width, src.height);
+    ctx.drawImage(tmp.c, 0, 0);
+  };
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.globalCompositeOperation = 'lighter';
+  channel(rough, '#00ff00');
+  if (metal) channel(metal, '#0000ff');
+  return c;
+}
+
 function surface(color: HTMLCanvasElement, height: HTMLCanvasElement, rough?: HTMLCanvasElement, metal?: HTMLCanvasElement): SurfaceSet {
+  const orm = rough ? toTexture(packRoughMetal(rough, metal), false) : undefined;
   const set: SurfaceSet = {
     map: toTexture(color, true),
     bumpMap: toTexture(height, false),
-    roughnessMap: rough ? toTexture(rough, false) : undefined,
-    metalnessMap: metal ? toTexture(metal, false) : undefined,
+    roughnessMap: orm,
+    metalnessMap: metal ? orm : undefined,
     dispose() {
       set.map.dispose();
       set.bumpMap.dispose();
-      set.roughnessMap?.dispose();
-      set.metalnessMap?.dispose();
+      orm?.dispose();
     },
   };
   return set;

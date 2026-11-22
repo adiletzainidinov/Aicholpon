@@ -3,6 +3,7 @@ import { Countdown } from './Countdown';
 import { GuestName, GuestNotice } from './GuestGreeting';
 import { Reveal } from './Reveal';
 import { RSVPForm } from './RSVPForm';
+import { ScrollCue } from './ScrollCue';
 import { ShareButton } from './ShareButton';
 
 function Ornament() {
@@ -13,16 +14,6 @@ function Ornament() {
       <circle cx="72" cy="9" r="1.2" fill="currentColor" />
       <circle cx="108" cy="9" r="1.2" fill="currentColor" />
     </svg>
-  );
-}
-
-function ScrollCue() {
-  return (
-    <span className="scroll-cue" aria-hidden>
-      <svg width="28" height="30" viewBox="0 0 28 30" fill="none" stroke="currentColor" strokeWidth="1.4">
-        <path d="M5 5l9 9 9-9M5 15l9 9 9-9" />
-      </svg>
-    </span>
   );
 }
 
@@ -42,10 +33,7 @@ export function Hero() {
           {EVENT.dateLabel}
         </p>
       </Reveal>
-      <div className="absolute inset-x-0 bottom-[max(24px,env(safe-area-inset-bottom))] grid justify-items-center gap-1">
-        <span className="eyebrow halo">Төмөн сыдырыңыз</span>
-        <ScrollCue />
-      </div>
+      <ScrollCue />
     </section>
   );
 }

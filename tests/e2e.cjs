@@ -81,6 +81,27 @@ async function openInvitation(page, query) {
       assert.equal(body.people, 3);
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/${quality}-rsvp-saved.png` });
     });
+    await step(`${label}: music toggles off and on`, async () => {
+      const btn = page.getByRole('button', { name: /Музыканы/ });
+      assert.equal(await btn.getAttribute('aria-pressed'), 'true');
+      await btn.click();
+      await page.waitForFunction(() => document.querySelector('.music')?.getAttribute('aria-pressed') === 'false');
+      await btn.click();
+      await page.waitForFunction(() => document.querySelector('.music')?.getAttribute('aria-pressed') === 'true');
+    });
+
+    await step(`${label}: scroll cue glides to the next scene`, async () => {
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForTimeout(400);
+      const cue = page.getByRole('button', { name: 'Кийинки бөлүмгө өтүү' });
+      await cue.waitFor();
+      const box = await cue.boundingBox();
+      const vp = page.viewportSize();
+      assert.ok(box && box.y + box.height <= vp.height, 'cue inside the viewport');
+      await cue.click({ force: true }); // it floats continuously, so it is never "stable" for Playwright
+      await page.waitForFunction(() => window.scrollY > innerHeight * 0.8, null, { timeout: 5000 });
+      await page.waitForFunction(() => document.querySelector('.scroll-cue')?.getAttribute('data-hidden') === 'true');
+    });
     await ctx.close();
   }
 
@@ -101,8 +122,31 @@ async function openInvitation(page, query) {
     assert.equal(r3.status, 401);
   });
 
+  await step('No horizontal page scroll at 320–430 px (invitation + admin)', async () => {
+    for (const w of [320, 360, 375, 390, 412, 430]) {
+      const c = await browser.newContext({ viewport: { width: w, height: 760 }, isMobile: true, hasTouch: true });
+      const p = await c.newPage();
+      await openInvitation(p, '?quality=lite&token=demo-token-2');
+      for (const y of [0, 800, 1600, 2400, 3200, 4000]) {
+        await p.evaluate((yy) => window.scrollTo(0, yy), y);
+        assert.equal(await p.evaluate(() => document.documentElement.scrollWidth), w, `invitation ${w}px @${y}`);
+      }
+      await p.goto(`${BASE}/admin`);
+      await p.getByLabel('Пароль').fill(PASSWORD);
+      await p.getByRole('button', { name: 'Войти' }).click();
+      await p.getByRole('heading', { name: 'Список гостей' }).waitFor();
+      assert.equal(await p.evaluate(() => document.documentElement.scrollWidth), w, `admin guests ${w}px`);
+      await p.getByRole('tab', { name: 'Статистика' }).click();
+      await p.getByText('Просмотры по дням').waitFor();
+      assert.equal(await p.evaluate(() => document.documentElement.scrollWidth), w, `admin stats ${w}px`);
+      await p.getByRole('button', { name: '14 дн.' }).click();
+      assert.equal(await p.evaluate(() => document.documentElement.scrollWidth), w, `admin chart 14d ${w}px`);
+      await c.close();
+    }
+  });
+
   // ---------------- Admin ----------------
-  const ctx = await browser.newContext({ ...devices['iPhone 13'] });
+  const ctx = await browser.newContext({ ...devices['iPhone 13'], permissions: ['clipboard-read', 'clipboard-write'] });
   const page = await ctx.newPage();
   watch(page, 'admin');
   page.on('dialog', (d) => d.accept());
@@ -131,6 +175,22 @@ async function openInvitation(page, query) {
     await card.getByText('Придёт · 3 чел.').waitFor();
   });
 
+  await step('Admin: copy link and WhatsApp share', async () => {
+    const card = page.getByTestId('guest').filter({ hasText: 'Мээрим' });
+    await card.getByRole('button', { name: 'Копировать' }).click();
+    await card.getByRole('button', { name: '✓ Скопировано' }).waitFor();
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    assert.match(clip, /\/\?token=demo-token-2$/);
+    // wa.me is not reachable from the test sandbox: capture the URL instead of following it
+    await page.evaluate(() => {
+      window.open = (u) => ((window.__opened = String(u)), null);
+    });
+    await card.getByRole('button', { name: 'WhatsApp' }).click();
+    const url = decodeURIComponent(await page.evaluate(() => window.__opened));
+    assert.ok(url.startsWith('https://wa.me/?text='), url);
+    assert.ok(url.includes('token=demo-token-2'), 'personal link in the message');
+  });
+
   const tmpName = 'Тест-конок ' + Date.now();
   await step('Admin: create, search, rename and delete a temporary invitation', async () => {
     await page.getByLabel('Имя гостя').fill(tmpName);
@@ -155,6 +215,8 @@ async function openInvitation(page, query) {
     assert.ok((await val('Просмотры сайта')) >= 3);
     assert.ok((await val('Открытия конверта')) >= 3);
     assert.ok((await val('Ответы через сайт')) >= 4);
+    await page.getByRole('button', { name: '14 дн.' }).click();
+    await page.getByRole('button', { name: '7 дн.' }).click();
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/admin-stats.png`, fullPage: true });
   });
 
@@ -191,7 +253,7 @@ async function openInvitation(page, query) {
   });
 
   await step('No JavaScript errors', async () => {
-    const real = errors.filter((e) => !/401|429|Failed to load resource/.test(e));
+    const real = errors.filter((e) => !/401|429|Failed to load resource|ERR_TUNNEL|ERR_PROXY|wa\.me/.test(e));
     assert.deepEqual(real, []);
   });
 
