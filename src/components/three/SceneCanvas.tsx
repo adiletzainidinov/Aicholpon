@@ -16,6 +16,8 @@ export interface SceneApi {
   hurry(): void;
   finish(): void;
   seek(t: number): void;
+  /** Debug: renderer statistics (draw calls, triangles, GPU resources). */
+  stats(): { calls: number; triangles: number; textures: number; geometries: number; programs: number };
   setScroll(px: number, viewportPx: number): void;
   setPointer(x: number, y: number): void;
 }
@@ -76,7 +78,9 @@ function Lighting({ profile, rig }: { profile: QualityProfile; rig: Rig }) {
 
   useEffect(() => {
     const pmrem = new THREE.PMREMGenerator(gl);
-    const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    const room = new RoomEnvironment();
+    const env = pmrem.fromScene(room, 0.04).texture;
+    room.dispose();
     scene.environment = env;
     scene.environmentIntensity = 0.45;
     scene.background = new THREE.Color('#cdd5e2');
@@ -236,6 +240,13 @@ function Stage({
             if (!profile.continuousScroll) setLoop('demand');
           },
           hurry: () => envelopeApi.current?.hurry(),
+          stats: () => ({
+            calls: gl.info.render.calls,
+            triangles: gl.info.render.triangles,
+            textures: gl.info.memory.textures,
+            geometries: gl.info.memory.geometries,
+            programs: gl.info.programs?.length ?? 0,
+          }),
           seek: (t: number) => {
             setLoop('always');
             envelopeApi.current?.seek(t);

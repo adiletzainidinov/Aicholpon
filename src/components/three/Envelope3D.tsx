@@ -106,7 +106,7 @@ export default function Envelope3D({
       const name = await step(() => nameLayer(S, script));
       // upload to the GPU one texture per task instead of all at once on the first frame
       for (const set of [pocket, flap, flap.liner, inner, seal, inside, cover]) {
-        for (const t of [set.map, set.bumpMap, set.roughnessMap, set.metalnessMap]) {
+        for (const t of new Set([set.map, set.bumpMap, set.roughnessMap, set.metalnessMap])) {
           if (!t) continue;
           await yieldToMain();
           if (cancelled) return;

@@ -35,6 +35,8 @@ export function columnClusters(viewH: number, halfW: number, screens: number): C
     const z = 0.05 + depth * 0.14;
     const r = (narrow ? 0.29 : 0.34) * (0.85 + ((i * 13) % 7) * 0.05);
     const kind = i % 5 === 3 ? 'wisteria' : 'hydrangea';
+    // the envelope's own bouquet owns this band – keep the first frame uncluttered
+    if (Math.abs(y) < 1.75) continue;
     out.push({
       kind,
       x: side * (halfW + (narrow ? -0.02 : -0.05) + (kind === 'wisteria' ? -0.12 : 0)),
@@ -140,6 +142,12 @@ function Petals({ count, material, geometry }: { count: number; material: THREE.
   return <instancedMesh ref={mesh} args={[geometry, material, count]} frustumCulled={false} castShadow />;
 }
 
+function bands<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
 export default function FloralScene({
   profile,
   columns,
@@ -184,7 +192,10 @@ export default function FloralScene({
   return (
     <>
       <Flora clusters={INTRO_CLUSTERS} profile={profile} materials={materials} geometries={geometries} />
-      {columns.length > 0 && <Flora clusters={columns} profile={profile} materials={materials} geometries={geometries} />}
+      {/* columns are split into bands so off-screen flowers are frustum-culled (also in the shadow pass) */}
+      {bands(columns, 4).map((band, i) => (
+        <Flora key={i} clusters={band} profile={profile} materials={materials} geometries={geometries} />
+      ))}
       <Petals count={profile.tier === 'high' ? 26 : 12} material={materials.petal} geometry={geometries.petal} />
     </>
   );

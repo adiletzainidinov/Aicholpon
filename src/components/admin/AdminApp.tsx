@@ -16,6 +16,9 @@ export default function AdminApp() {
   const [guests, setGuests] = useState<Guest[]>([]);
   const [events, setEvents] = useState<VisitEvent[]>([]);
   const [tab, setTab] = useState<'guests' | 'stats'>('guests');
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
 
   const handleError = useCallback((e: unknown) => {
     if (e instanceof AuthError) {
@@ -28,7 +31,21 @@ export default function AdminApp() {
     const [g, s] = await Promise.all([adminApi.list(), adminApi.stats()]);
     setGuests(Array.isArray(g) ? g : []);
     setEvents(Array.isArray(s) ? s : []);
+    setUpdatedAt(new Date());
+    setError('');
   }, []);
+
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await load();
+    } catch (e) {
+      handleError(e);
+      setError(e instanceof Error ? e.message : 'Не удалось обновить данные');
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load, handleError]);
 
   useEffect(() => {
     adminApi
@@ -41,6 +58,7 @@ export default function AdminApp() {
       .catch((e: unknown) => {
         handleError(e);
         setView('login');
+        if (!(e instanceof AuthError)) setAuthMsg('Сервер недоступен. Проверьте интернет и обновите страницу.');
       });
   }, [load, handleError]);
 
@@ -69,11 +87,11 @@ export default function AdminApp() {
   }
 
   return (
-    <div className="admin min-h-svh bg-[#f4f7fc] font-sans text-[15px] text-[#273d6b]">
-      <main className="mx-auto max-w-[960px] px-4 pb-16 pt-5">
+    <div className="admin min-h-svh overflow-x-clip bg-[#f4f7fc] font-sans text-[15px] text-[#273d6b]">
+      <main className="mx-auto max-w-[960px] px-3.5 pb-[max(4rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-4">
         <header className="mb-5 flex items-center justify-between gap-3">
-          <div>
-            <h1 className="text-[24px] font-semibold">Айчолпон · Админка</h1>
+          <div className="min-w-0">
+            <h1 className="text-[21px] font-semibold leading-tight sm:text-[24px]">Айчолпон · Админка</h1>
             <a href="/" className="text-[14px] text-[#3855a0]">
               ← Приглашение
             </a>
@@ -85,7 +103,13 @@ export default function AdminApp() {
           )}
         </header>
 
-        {view === 'checking' && <p className="text-[#6e7f9e]">Загрузка…</p>}
+        {view === 'checking' && (
+          <div className="grid gap-3" aria-busy="true" aria-label="Загрузка">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-24 animate-pulse rounded-2xl bg-white/70" />
+            ))}
+          </div>
+        )}
 
         {view === 'login' && (
           <form onSubmit={login} className="mx-auto mt-10 grid max-w-[380px] gap-3 rounded-2xl bg-white p-6 shadow-[0_4px_18px_#314b7312]">
@@ -117,7 +141,16 @@ export default function AdminApp() {
                 </button>
               ))}
             </nav>
-            {tab === 'guests' ? <GuestManagement guests={guests} reload={load} onError={handleError} /> : <Analytics guests={guests} events={events} />}
+            {error && (
+              <p className="mb-4 rounded-xl bg-[#fbe9ec] px-4 py-3 text-[14px] text-[#aa3446]" role="alert">
+                {error}
+              </p>
+            )}
+            {tab === 'guests' ? (
+              <GuestManagement guests={guests} reload={load} onError={handleError} />
+            ) : (
+              <Analytics guests={guests} events={events} updatedAt={updatedAt} onRefresh={refresh} refreshing={refreshing} />
+            )}
           </>
         )}
       </main>
