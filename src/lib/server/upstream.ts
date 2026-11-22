@@ -41,4 +41,4 @@ async function request(path: string, body: unknown, withKey: boolean, extraHeade
 
 export const rpc = (fn: string, body: unknown) => request(`/rest/v1/rpc/${fn}`, body, true);
 export const edge = (fn: string, body: unknown, headers?: HeadersInit) =>
-  request(`/functions/v1/${fn}`, body, false, headers);
+  request(`/functions/v1/${fn}`, body, false, { Origin: 'https://aicholpon.vercel.app', ...(headers as Record<string, string> | undefined) });
