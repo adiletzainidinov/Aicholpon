@@ -90,7 +90,8 @@ export function buildFlora(clusters: ClusterSpec[], floretsPerCluster: number): 
         _q2.setFromAxisAngle(_z, r() * Math.PI * 2);
         _q.multiply(_q2);
         const sc = cl.r * (0.25 + r() * 0.08);
-        _m.compose(_p, _q, _s.setScalar(sc));
+        // every floret is cupped a little differently
+        _m.compose(_p, _q, _s.set(sc, sc * (0.92 + r() * 0.16), sc * (0.65 + r() * 0.8)));
         const t = r();
         _c.set(t < 0.45 ? c0 : t < 0.85 ? c1 : c2);
         _c2.set(c2);
@@ -170,22 +171,64 @@ export function petalMap(): THREE.Texture {
   return t;
 }
 
-/** Adds a gentle wind sway to an instanced material (GPU only, no per-frame CPU work). */
-export function addSway(material: THREE.Material, uniforms: { uTime: { value: number } }, amount: number) {
+export interface FloraUniforms {
+  uTime: { value: number };
+  /** 0..1 – intro bouquet steps aside while the envelope opens */
+  uSpread: { value: number };
+  /** camera height – column florets open up as they approach the centre of the view */
+  uCamY: { value: number };
+}
+
+/**
+ * GPU-only animation for instanced flora (no per-frame CPU work):
+ * wind sway, optional "spread" away from the envelope, optional bloom-on-approach,
+ * and a touch of light scattering so petals read as soft tissue rather than plastic.
+ */
+export function addFloraShader(
+  material: THREE.Material,
+  uniforms: FloraUniforms,
+  opts: { sway: number; spread?: boolean; bloom?: boolean; scatter?: number },
+) {
+  const { sway, spread = false, bloom = false, scatter = 0 } = opts;
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = uniforms.uTime;
+    shader.uniforms.uSpread = uniforms.uSpread;
+    shader.uniforms.uCamY = uniforms.uCamY;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;')
+      .replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uSpread;\nuniform float uCamY;')
       .replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
 #ifdef USE_INSTANCING
   vec3 ip = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
+  float sx = max(length(instanceMatrix[0].xyz), 0.0001);
+  float sy = max(length(instanceMatrix[1].xyz), 0.0001);
+  ${
+    bloom
+      ? `float openness = smoothstep(3.4, 1.1, abs(ip.y - uCamY));
+  transformed.xy *= mix(0.62, 1.0, openness);
+  transformed.z *= mix(1.7, 1.0, openness);`
+      : ''
+  }
   float ph = ip.x * 2.3 + ip.y * 1.7;
-  transformed.x += sin(uTime * 0.9 + ph) * ${amount.toFixed(4)} / max(length(instanceMatrix[0].xyz), 0.0001);
-  transformed.y += cos(uTime * 0.7 + ph * 1.3) * ${(amount * 0.6).toFixed(4)} / max(length(instanceMatrix[1].xyz), 0.0001);
+  transformed.x += sin(uTime * 0.9 + ph) * ${sway.toFixed(4)} / sx;
+  transformed.y += cos(uTime * 0.7 + ph * 1.3) * ${(sway * 0.6).toFixed(4)} / sy;
+  ${
+    spread
+      ? `// only the bouquet around the envelope (|y| < 1.9) steps aside
+  vec2 away = ip.xy / max(length(ip.xy), 0.001);
+  transformed.xy += away * uSpread * 0.12 * step(abs(ip.y), 1.9) / vec2(sx, sy);`
+      : ''
+  }
 #endif`,
       );
+    if (scatter > 0) {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+  totalEmissiveRadiance += diffuseColor.rgb * ${scatter.toFixed(3)};`,
+      );
+    }
   };
-  material.customProgramCacheKey = () => 'sway' + amount;
+  material.customProgramCacheKey = () => `flora-${sway}-${spread}-${bloom}-${scatter}`;
 }

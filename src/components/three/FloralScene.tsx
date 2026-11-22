@@ -4,7 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { QualityProfile } from '@/lib/client/quality';
-import { addSway, buildFlora, petalMap, type ClusterSpec, type Tone } from './flora';
+import { addFloraShader, buildFlora, petalMap, type ClusterSpec, type FloraUniforms, type Tone } from './flora';
 import { floretGeometry, leafGeometry, petalGeometry } from './geometry';
 import { CARD_FINAL } from './rig';
 
@@ -101,7 +101,7 @@ function Petals({ count, material, geometry }: { count: number; material: THREE.
       Array.from({ length: count }, (_, i) => ({
         x: (Math.random() - 0.5) * 3,
         y: (Math.random() - 0.5) * 4,
-        z: 0.3 + Math.random() * 1.4,
+        z: 0.3 + Math.random() * 2.1, // several depth layers: some petals drift close to the lens
         rx: Math.random() * 6,
         ry: Math.random() * 6,
         speed: 0.08 + Math.random() * 0.12,
@@ -151,11 +151,14 @@ function bands<T>(items: T[], size: number): T[][] {
 export default function FloralScene({
   profile,
   columns,
-  time,
+  uniforms,
+  extras,
 }: {
   profile: QualityProfile;
   columns: ClusterSpec[];
-  time: { value: number };
+  uniforms: FloraUniforms;
+  /** secondary effects (drifting petals) are mounted only once the main scene is on screen */
+  extras: boolean;
 }) {
   const geometries = useMemo(
     () => ({
@@ -168,35 +171,44 @@ export default function FloralScene({
   );
   const materials = useMemo(() => {
     const map = petalMap();
-    const floret = profile.physical
-      ? new THREE.MeshPhysicalMaterial({ map, roughness: 0.55, sheen: 0.6, sheenRoughness: 0.5, sheenColor: new THREE.Color('#ffffff'), side: THREE.DoubleSide })
-      : new THREE.MeshStandardMaterial({ map, roughness: 0.6, side: THREE.DoubleSide });
-    const uniforms = { uTime: time };
-    addSway(floret, uniforms, 0.012);
+    const makeFloret = () =>
+      profile.physical
+        ? new THREE.MeshPhysicalMaterial({ map, roughness: 0.58, sheen: 0.7, sheenRoughness: 0.45, sheenColor: new THREE.Color('#ffffff'), side: THREE.DoubleSide })
+        : new THREE.MeshStandardMaterial({ map, roughness: 0.62, side: THREE.DoubleSide });
+    const scatter = profile.physical ? 0.14 : 0.1;
+    // one material set for the whole garden (fewer shader programs): the bouquet around the
+    // envelope steps aside on opening, column florets open up as they approach the view centre
+    const floret = makeFloret();
+    addFloraShader(floret, uniforms, { sway: 0.012, spread: true, bloom: true, scatter });
     const leaf = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.05, side: THREE.DoubleSide });
-    addSway(leaf, uniforms, 0.008);
+    addFloraShader(leaf, uniforms, { sway: 0.008, spread: true, scatter: 0.05 });
     const core = new THREE.MeshStandardMaterial({ roughness: 0.9 });
+    addFloraShader(core, uniforms, { sway: 0, spread: true });
     const petal = new THREE.MeshStandardMaterial({ map, roughness: 0.6, side: THREE.DoubleSide });
-    return { floret, leaf, core, petal, map };
-  }, [profile.physical, time]);
+    return { set: { floret, leaf, core }, petal, map };
+  }, [profile.physical, uniforms]);
+
+  useFrame(({ camera }) => {
+    uniforms.uCamY.value = camera.position.y;
+  });
 
   useEffect(
     () => () => {
       Object.values(geometries).forEach((g) => g.dispose());
       materials.map.dispose();
-      [materials.floret, materials.leaf, materials.core, materials.petal].forEach((m) => m.dispose());
+      [...Object.values(materials.set), materials.petal].forEach((m) => m.dispose());
     },
     [geometries, materials],
   );
 
   return (
     <>
-      <Flora clusters={INTRO_CLUSTERS} profile={profile} materials={materials} geometries={geometries} />
+      <Flora clusters={INTRO_CLUSTERS} profile={profile} materials={materials.set} geometries={geometries} />
       {/* columns are split into bands so off-screen flowers are frustum-culled (also in the shadow pass) */}
       {bands(columns, 4).map((band, i) => (
-        <Flora key={i} clusters={band} profile={profile} materials={materials} geometries={geometries} />
+        <Flora key={i} clusters={band} profile={profile} materials={materials.set} geometries={geometries} />
       ))}
-      <Petals count={profile.tier === 'high' ? 26 : 12} material={materials.petal} geometry={geometries.petal} />
+      {extras && <Petals count={profile.tier === 'high' ? 26 : 12} material={materials.petal} geometry={geometries.petal} />}
     </>
   );
 }

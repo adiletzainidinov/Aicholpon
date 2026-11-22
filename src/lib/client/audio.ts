@@ -105,3 +105,28 @@ export function paperSwish(duration = 0.7, delay = 0) {
   src.connect(bp).connect(g).connect(fxGain);
   src.start(t);
 }
+
+let lastAir = 0;
+/**
+ * A barely audible airy shimmer for scene transitions. Plays only while the guest has
+ * sound on (music playing) and never more often than every 1.6 s.
+ */
+export function airShimmer() {
+  if (!ctx || !fxGain || !el || el.paused) return;
+  const now = ctx.currentTime;
+  if (now - lastAir < 1.6) return;
+  lastAir = now;
+  const len = Math.floor(ctx.sampleRate * 1.1);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.sin((Math.PI * i) / len) ** 3;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 5200;
+  const g = ctx.createGain();
+  g.gain.value = 0.05;
+  src.connect(hp).connect(g).connect(fxGain);
+  src.start(now);
+}

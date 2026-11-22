@@ -102,6 +102,17 @@ async function openInvitation(page, query) {
       await page.waitForFunction(() => window.scrollY > innerHeight * 0.8, null, { timeout: 5000 });
       await page.waitForFunction(() => document.querySelector('.scroll-cue')?.getAttribute('data-hidden') === 'true');
     });
+    await step(`${label}: "Жооп берүү" shortcut jumps to the RSVP form`, async () => {
+      await page.evaluate(() => window.scrollTo(0, innerHeight * 1.2));
+      const pill = page.locator('.rsvp-shortcut');
+      await page.waitForFunction(() => document.querySelector('.rsvp-shortcut')?.getAttribute('data-show') === 'true');
+      await pill.click();
+      await page.waitForFunction(() => {
+        const r = document.getElementById('rsvp')?.getBoundingClientRect();
+        return r && Math.abs(r.top) < 40;
+      }, null, { timeout: 6000 });
+      await page.waitForFunction(() => document.querySelector('.rsvp-shortcut')?.getAttribute('data-show') === 'false');
+    });
     await ctx.close();
   }
 

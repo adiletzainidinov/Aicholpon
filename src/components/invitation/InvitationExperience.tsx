@@ -9,6 +9,7 @@ import { isValidToken } from '@/lib/shared/rsvp';
 import type { SceneApi } from '../three/SceneCanvas';
 import { GuestContext, type GuestState } from './GuestContext';
 import { Envelope2D } from './Envelope2D';
+import { RsvpShortcut } from './RsvpShortcut';
 
 // The heavy 3D bundle (three.js, R3F, GSAP timeline) is split out and only fetched on capable devices.
 const SceneCanvas = dynamic(() => import('../three/SceneCanvas'), { ssr: false });
@@ -190,6 +191,24 @@ export default function InvitationExperience({ children, liteDecor }: { children
     return () => document.removeEventListener('visibilitychange', onVis);
   }, []);
 
+  // the envelope leans towards the finger (3D), or the poster envelope tilts (2D / Lite)
+  const onPress = useCallback(
+    (e: React.PointerEvent) => {
+      if (phase !== 'intro') return;
+      const x = (e.clientX / window.innerWidth) * 2 - 1;
+      const y = -((e.clientY / window.innerHeight) * 2 - 1);
+      if (api.current) api.current.press(x, y);
+      const env = document.querySelector<HTMLElement>('.env2d');
+      if (env) {
+        env.style.setProperty('--tx', String(x));
+        env.style.setProperty('--ty', String(y));
+        env.dataset.pressed = 'true';
+        window.setTimeout(() => delete env.dataset.pressed, 260);
+      }
+    },
+    [phase],
+  );
+
   const is3D = quality !== null && quality !== 'lite';
   const profile = quality && quality !== 'lite' ? PROFILES[quality] : null;
 
@@ -199,6 +218,7 @@ export default function InvitationExperience({ children, liteDecor }: { children
       {quality === 'lite' && liteDecor}
       {mount3D && profile && (
         <div className="scene-bg" style={{ opacity: sceneReady ? 1 : 0, transition: 'opacity .9s ease' }}>
+          <div className="grade" aria-hidden />
           <SceneBoundary onError={onFailure}>
             <SceneCanvas profile={profile} onReady={onReady} onFailure={onFailure} contentWidth={CONTENT_WIDTH} screens={8} />
           </SceneBoundary>
@@ -213,6 +233,7 @@ export default function InvitationExperience({ children, liteDecor }: { children
         <button
           type="button"
           onClick={open}
+          onPointerDown={onPress}
           className="intro-btn absolute inset-0 z-10 flex cursor-pointer flex-col items-center justify-between border-0 bg-transparent px-6 pb-[max(28px,env(safe-area-inset-bottom))] pt-[max(34px,env(safe-area-inset-top))]"
           aria-label="Чакырууну ачуу"
         >
@@ -235,6 +256,7 @@ export default function InvitationExperience({ children, liteDecor }: { children
         </svg>
       </button>
 
+      {phase === 'content' && <RsvpShortcut />}
       <main className="content" data-visible={phase === 'content'} data-mode={is3D && sceneReady ? '3d' : '2d'} aria-hidden={phase !== 'content'}>
         {children}
       </main>

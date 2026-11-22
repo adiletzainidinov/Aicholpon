@@ -28,6 +28,10 @@ export interface Rig {
   aspect: number;
   introDistance: number;
   cardDistance: number;
+  /** shared flora uniforms (time, spread of the intro bouquet, camera height) */
+  flora: { uTime: { value: number }; uSpread: { value: number }; uCamY: { value: number } };
+  /** last touch on the closed envelope in [-1, 1] and its strength (decays) */
+  press: THREE.Vector3;
 }
 
 export function createRig(): Rig {
@@ -41,6 +45,8 @@ export function createRig(): Rig {
     aspect: 1,
     introDistance: 8,
     cardDistance: 6,
+    flora: { uTime: { value: 0 }, uSpread: { value: 0 }, uCamY: { value: 0 } },
+    press: new THREE.Vector3(),
   };
 }
 
@@ -60,8 +66,13 @@ export function introTarget(rig: Rig) {
 /** World-space camera target while scrolling: objects at card depth move 1:1 with the page. */
 export function scrollTarget(rig: Rig, out: { pos: THREE.Vector3; look: THREE.Vector3 }) {
   const viewH = viewHeightAt(rig.cardDistance);
-  const y = CARD_FINAL.y - (rig.scrollPx / rig.viewportPx) * viewH;
-  out.pos.set(0, y, CARD_FINAL.z + rig.cardDistance);
-  out.look.set(0, y, CARD_FINAL.z);
+  const screens = rig.scrollPx / rig.viewportPx;
+  const y = CARD_FINAL.y - screens * viewH;
+  // gentle choreography between scenes: a slow lateral drift and a soft dolly "breath",
+  // small enough that the page still reads exactly where the finger puts it
+  const drift = Math.sin(screens * Math.PI * 0.5) * 0.09;
+  const breath = (1 - Math.cos(Math.min(screens, 1) * Math.PI)) * 0.06 + Math.sin(screens * Math.PI) * 0.05;
+  out.pos.set(drift, y, CARD_FINAL.z + rig.cardDistance + breath);
+  out.look.set(drift * 0.35, y, CARD_FINAL.z);
   return out;
 }

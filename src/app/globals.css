@@ -806,3 +806,61 @@ h2,
 .lace-frame p {
   text-wrap: balance;
 }
+
+/* ---------- Cinematic grading over the 3D canvas (pure CSS, no post-processing pass) ---------- */
+.grade {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 75% at 50% 42%, transparent 55%, rgb(38 52 104 / 0.13) 100%),
+    radial-gradient(90% 45% at 50% 0%, rgb(255 244 222 / 0.14), transparent 70%);
+}
+
+/* Lite / poster envelope: leans towards the finger */
+.env2d {
+  transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.env2d[data-pressed='true'] {
+  transform: perspective(900px) rotateX(calc(var(--ty, 0) * -6deg)) rotateY(calc(var(--tx, 0) * 7deg)) scale(0.985);
+  transition-duration: 0.12s;
+}
+
+/* ---------- Quick jump to the RSVP form ---------- */
+.rsvp-shortcut {
+  position: fixed;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: calc(max(14px, env(safe-area-inset-bottom)) + 6px);
+  z-index: 35;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: linear-gradient(180deg, rgb(74 94 163 / 0.94), rgb(47 63 122 / 0.94));
+  box-shadow: 0 0 0 1px rgb(201 165 92 / 0.5) inset, 0 12px 26px -12px rgb(47 63 122 / 0.8);
+  cursor: pointer;
+  opacity: 0;
+  translate: 0 12px;
+  pointer-events: none;
+  transition: opacity 0.5s ease, translate 0.5s ease;
+}
+
+.rsvp-shortcut[data-show='true'] {
+  opacity: 1;
+  translate: 0 0;
+  pointer-events: auto;
+}
+
+.rsvp-shortcut svg {
+  color: #e9d39c;
+}
