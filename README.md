@@ -23,7 +23,7 @@ Next.js 16 (App Router, TypeScript strict) · React 19 · Tailwind CSS 4 · thre
 - Рекомендуется задать в Vercel `ADMIN_SESSION_SECRET` (≥16 символов) — тогда cookie шифруется AES-256-GCM.
 
 ## Совместимость
-Старые ссылки `/?token=…` и `/admin/` продолжают работать. Музыка — оригинальный `public/aicholpon-music.mp3`.
+Старые ссылки `/?token=…` и `/admin/` продолжают работать. Музыка — `public/music-ordinary.mp3` (Alex Warren — Ordinary, 128 кбит/с).
 
 ## Разработка и тесты
 ```bash

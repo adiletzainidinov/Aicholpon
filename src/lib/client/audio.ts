@@ -11,7 +11,7 @@ const MUSIC_VOLUME = 0.55;
 function ensure() {
   if (typeof window === 'undefined') return null;
   if (!el) {
-    el = new Audio('/aicholpon-music.mp3');
+    el = new Audio('/music-ordinary.mp3');
     el.loop = true;
     el.preload = 'auto';
     el.crossOrigin = 'anonymous';

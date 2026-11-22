@@ -24,7 +24,7 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: '/aicholpon-music.mp3',
+        source: '/music-ordinary.mp3',
         headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
       },
       {
