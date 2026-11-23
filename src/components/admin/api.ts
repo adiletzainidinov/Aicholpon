@@ -26,3 +26,38 @@ export const adminApi = {
 };
 
 export const inviteLink = (g: Guest) => `${location.origin}/?token=${encodeURIComponent(g.invite_token)}`;
+
+/** Opens the personal invitation without counting it as a guest visit. */
+export const previewLink = (g: Guest) => `${inviteLink(g)}&preview=1`;
+
+export const whatsappUrl = (g: Guest) =>
+  'https://wa.me/?text=' + encodeURIComponent(`${g.name}, сизди Айчолпондун кыз узатуу тоюна чакырабыз! 💌 ${inviteLink(g)}`);
+
+/** When the guest answered, if the backend stores it (field names differ between versions). */
+export function answeredAt(g: Guest): Date | null {
+  const raw = g.responded_at ?? g.answered_at ?? g.updated_at ?? null;
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
+export const formatDateTime = (d: Date) =>
+  d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+export const hasAnswered = (g: Guest) => g.attending === true || g.attending === false;
+
+export function exportCsv(guests: Guest[]) {
+  const rows = [
+    ['Имя', 'Ссылка', 'Ответ', 'Людей', 'Время ответа'],
+    ...guests.map((g) => {
+      const at = hasAnswered(g) ? answeredAt(g) : null;
+      return [g.name, inviteLink(g), g.attending == null ? '' : g.attending ? 'Придёт' : 'Не придёт', g.attending === false ? 0 : (g.people ?? ''), at ? formatDateTime(at) : ''];
+    }),
+  ];
+  const csv = '﻿' + rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'aicholpon-guests.csv';
+  a.click();
+  window.setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}

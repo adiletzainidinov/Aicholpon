@@ -6,6 +6,8 @@ export interface Guest {
   people: number | null;
   created_at?: string | null;
   responded_at?: string | null;
+  answered_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface VisitEvent {

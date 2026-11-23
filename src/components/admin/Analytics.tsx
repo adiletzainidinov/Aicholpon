@@ -115,7 +115,7 @@ function ViewsChart({ events, opens, views }: { events: VisitEvent[]; opens: num
   );
 }
 
-export function Analytics({ guests, events, updatedAt, onRefresh, refreshing }: { guests: Guest[]; events: VisitEvent[]; updatedAt: Date | null; onRefresh: () => void; refreshing: boolean }) {
+export function Analytics({ guests, events }: { guests: Guest[]; events: VisitEvent[] }) {
   const count = (t: string) => events.filter((e) => e.event_type === t).length;
   const now = Date.now();
   const today = startOfDay(now);
@@ -131,24 +131,18 @@ export function Analytics({ guests, events, updatedAt, onRefresh, refreshing }: 
 
   return (
     <section className="grid min-w-0 grid-cols-1 gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[13px] text-[#6e7f9e]">
-          {updatedAt ? `Обновлено в ${updatedAt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}` : ''}
-        </p>
-        <button type="button" className="adm-btn adm-btn--alt" onClick={onRefresh} disabled={refreshing}>
-          {refreshing ? 'Обновляем…' : 'Обновить'}
-        </button>
-      </div>
-
       <div className="min-w-0">
         <h2 className="mb-3 text-[19px] font-semibold">Приглашения и ответы</h2>
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
-          <Stat label="Приглашений" value={guests.length} />
+          <Stat label="Всего приглашений" value={guests.length} />
+          <Stat label="Ответили" value={answered} />
           <Stat label="Придут (семей)" value={yes.length} accent="#24764b" />
-          <Stat label="Гостей придёт" value={people} accent="#24764b" />
-          <Stat label="Не придут" value={no.length} accent="#aa3446" />
-          <Stat label="Нет ответа" value={pending.length} accent="#8a6d2c" />
+          <Stat label="Отказались" value={no.length} accent="#aa3446" />
+          <Stat label="Людей придёт" value={people} accent="#24764b" />
         </div>
+        <p className="mt-2 text-[13px] text-[#6e7f9e]">
+          Ещё не ответили: <b className="tabular-nums text-[#8a6d2c]">{pending.length}</b> — они не считаются отказавшимися.
+        </p>
         {guests.length > 0 && (
           <div className="mt-3 rounded-2xl bg-white p-4 shadow-[0_4px_18px_#314b7312]">
             <div className="flex justify-between gap-2 text-[13px] text-[#6e7f9e]">

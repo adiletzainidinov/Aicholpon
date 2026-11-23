@@ -18,7 +18,7 @@ export async function submitRsvp(p: RsvpPayload): Promise<void> {
   if (MOCK_MODE) {
     const guest = p.token ? mockDb.guests.find((x) => x.invite_token === p.token) : undefined;
     if (guest) Object.assign(guest, { attending: p.attending, people: p.people, responded_at: new Date().toISOString() });
-    else mockDb.guests.push({ id: crypto.randomUUID(), name: p.name, invite_token: randomToken(), attending: p.attending, people: p.people });
+    else mockDb.guests.push({ id: crypto.randomUUID(), name: p.name, invite_token: randomToken(), attending: p.attending, people: p.people, responded_at: new Date().toISOString() });
     return;
   }
   const res = (await edge('aicholpon-submit', p)) as { ok?: boolean; error?: string } | null;

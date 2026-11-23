@@ -102,6 +102,17 @@ async function openInvitation(page, query) {
       await page.waitForFunction(() => window.scrollY > innerHeight * 0.8, null, { timeout: 5000 });
       await page.waitForFunction(() => document.querySelector('.scroll-cue')?.getAttribute('data-hidden') === 'true');
     });
+    await step(`${label}: "Жооп берүү" shortcut jumps to the RSVP form`, async () => {
+      await page.evaluate(() => window.scrollTo(0, innerHeight * 1.2));
+      const pill = page.locator('.rsvp-shortcut');
+      await page.waitForFunction(() => document.querySelector('.rsvp-shortcut')?.getAttribute('data-show') === 'true');
+      await pill.click();
+      await page.waitForFunction(() => {
+        const r = document.getElementById('rsvp')?.getBoundingClientRect();
+        return r && Math.abs(r.top) < 40;
+      }, null, { timeout: 6000 });
+      await page.waitForFunction(() => document.querySelector('.rsvp-shortcut')?.getAttribute('data-show') === 'false');
+    });
     await ctx.close();
   }
 
@@ -134,8 +145,11 @@ async function openInvitation(page, query) {
       await p.goto(`${BASE}/admin`);
       await p.getByLabel('Пароль').fill(PASSWORD);
       await p.getByRole('button', { name: 'Войти' }).click();
-      await p.getByRole('heading', { name: 'Список гостей' }).waitFor();
-      assert.equal(await p.evaluate(() => document.documentElement.scrollWidth), w, `admin guests ${w}px`);
+      await p.getByRole('heading', { name: /^Приглашения/ }).waitFor();
+      assert.equal(await p.evaluate(() => document.documentElement.scrollWidth), w, `admin invitations ${w}px`);
+      await p.getByRole('tab', { name: /Ответы/ }).click();
+      await p.getByRole('heading', { name: /Ответы гостей/ }).waitFor();
+      assert.equal(await p.evaluate(() => document.documentElement.scrollWidth), w, `admin responses ${w}px`);
       await p.getByRole('tab', { name: 'Статистика' }).click();
       await p.getByText('Просмотры по дням').waitFor();
       assert.equal(await p.evaluate(() => document.documentElement.scrollWidth), w, `admin stats ${w}px`);
@@ -161,7 +175,7 @@ async function openInvitation(page, query) {
   await step('Admin: login with password, httpOnly session cookie', async () => {
     await page.getByLabel('Пароль').fill(PASSWORD);
     await page.getByRole('button', { name: 'Войти' }).click();
-    await page.getByRole('heading', { name: 'Список гостей' }).waitFor({ timeout: 10000 });
+    await page.getByRole('heading', { name: /^Приглашения/ }).waitFor({ timeout: 10000 });
     const cookies = await ctx.cookies(BASE + '/api/admin');
     const c = cookies.find((x) => x.name === 'aicholpon_admin');
     assert.ok(c, 'session cookie set');
@@ -170,58 +184,158 @@ async function openInvitation(page, query) {
     assert.equal(await page.evaluate(() => document.cookie.includes('aicholpon_admin')), false);
   });
 
-  await step('Admin: RSVP answers from the invitation are visible', async () => {
-    const card = page.getByTestId('guest').filter({ hasText: 'Асан ага жана Үсөн эже' });
-    await card.getByText('Придёт · 3 чел.').waitFor();
+  // ---- full scenario: create → share → guest answers → answers tab → statistics ----
+  const stamp = Date.now();
+  const yesName = `Тест-үй-бүлө ${stamp}`;
+  const noName = `Тест-конок ${stamp}`;
+  const created = {};
+  const statVal = async (label) => Number(await page.getByText(label, { exact: true }).locator('xpath=following-sibling::div').first().textContent());
+  let before = {};
+
+  await step('Scenario 0: remember statistics before', async () => {
+    await page.getByRole('tab', { name: /Статистика/ }).click();
+    for (const l of ['Всего приглашений', 'Ответили', 'Придут (семей)', 'Отказались', 'Людей придёт', 'Просмотры сайта']) before[l] = await statVal(l);
+    await page.getByRole('tab', { name: /Приглашения/ }).click();
   });
 
-  await step('Admin: copy link and WhatsApp share', async () => {
-    const card = page.getByTestId('guest').filter({ hasText: 'Мээрим' });
-    await card.getByRole('button', { name: 'Копировать' }).click();
+  await step('Scenario 1: admin creates invitations and immediately gets link + share buttons', async () => {
+    for (const n of [yesName, noName]) {
+      await page.getByLabel('Имя гостя').fill(n);
+      await page.getByRole('button', { name: 'Создать приглашение' }).click();
+      const panel = page.getByTestId('created-invite');
+      await panel.getByText(n).waitFor();
+      const link = await panel.getByLabel('Персональная ссылка').inputValue();
+      assert.match(link, /\/\?token=[A-Za-z0-9_-]+$/);
+      created[n] = link;
+      await panel.getByRole('link', { name: 'Посмотреть' }).waitFor();
+      await panel.getByRole('button', { name: 'Отправить в WhatsApp' }).waitFor();
+    }
+    await page.getByTestId('invite-name').filter({ hasText: yesName }).waitFor();
+  });
+
+  await step('Scenario 2: copy link and WhatsApp carry the personal link; "Посмотреть" is a preview', async () => {
+    const card = page.getByTestId('invite').filter({ hasText: yesName });
+    await card.getByRole('button', { name: 'Копировать ссылку' }).click();
     await card.getByRole('button', { name: '✓ Скопировано' }).waitFor();
-    const clip = await page.evaluate(() => navigator.clipboard.readText());
-    assert.match(clip, /\/\?token=demo-token-2$/);
-    // wa.me is not reachable from the test sandbox: capture the URL instead of following it
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), created[yesName]);
     await page.evaluate(() => {
       window.open = (u) => ((window.__opened = String(u)), null);
     });
-    await card.getByRole('button', { name: 'WhatsApp' }).click();
-    const url = decodeURIComponent(await page.evaluate(() => window.__opened));
-    assert.ok(url.startsWith('https://wa.me/?text='), url);
-    assert.ok(url.includes('token=demo-token-2'), 'personal link in the message');
+    await card.getByRole('button', { name: 'Отправить в WhatsApp' }).click();
+    const wa = decodeURIComponent(await page.evaluate(() => window.__opened));
+    assert.ok(wa.startsWith('https://wa.me/?text='), wa);
+    assert.ok(wa.includes(created[yesName]), 'WhatsApp message contains the personal link');
+    const href = await card.getByRole('link', { name: 'Посмотреть' }).getAttribute('href');
+    assert.equal(href, created[yesName] + '&preview=1');
   });
 
-  const tmpName = 'Тест-конок ' + Date.now();
-  await step('Admin: create, search, rename and delete a temporary invitation', async () => {
-    await page.getByLabel('Имя гостя').fill(tmpName);
-    await page.getByRole('button', { name: 'Создать ссылку' }).click();
-    await page.getByTestId('guest-name').filter({ hasText: tmpName }).waitFor();
-    await page.getByLabel('Поиск по имени').fill('Тест-конок');
-    assert.equal(await page.getByTestId('guest').count(), 1);
-    const card = page.getByTestId('guest').filter({ hasText: tmpName });
-    await card.getByRole('button', { name: 'Изменить' }).click();
-    await page.getByLabel('Новое имя').fill(tmpName + ' 2');
-    await page.getByRole('button', { name: 'OK' }).click();
-    await page.getByTestId('guest-name').filter({ hasText: tmpName + ' 2' }).waitFor();
-    if (SHOTS) await page.screenshot({ path: `${SHOTS}/admin-guests.png` });
-    await page.getByTestId('guest').filter({ hasText: tmpName + ' 2' }).getByRole('button', { name: 'Удалить' }).click();
-    await page.getByTestId('guest-name').filter({ hasText: tmpName }).waitFor({ state: 'detached' });
-    await page.getByLabel('Поиск по имени').fill('');
+  await step('Scenario 3: the answers tab has no unanswered invitations yet and no share buttons', async () => {
+    await page.getByRole('tab', { name: /Ответы/ }).click();
+    const list = page.getByTestId('response-list');
+    assert.equal(await list.getByText(yesName).count(), 0);
+    assert.equal(await page.getByRole('button', { name: /WhatsApp|Копировать/ }).count(), 0);
+    assert.equal(await page.getByRole('link', { name: /token=|Посмотреть/ }).count(), 0);
+    assert.equal(await page.getByRole('button', { name: /Без ответа/ }).count(), 0);
+    for (const f of ['Все', 'Придут', 'Не придут']) await page.getByRole('button', { name: new RegExp('^' + f) }).waitFor();
   });
 
-  await step('Admin: statistics count views, opens and RSVPs', async () => {
-    await page.getByRole('tab', { name: 'Статистика' }).click();
-    const val = async (label) => Number(await page.getByText(label, { exact: true }).locator('xpath=following-sibling::div').textContent());
-    assert.ok((await val('Просмотры сайта')) >= 3);
-    assert.ok((await val('Открытия конверта')) >= 3);
-    assert.ok((await val('Ответы через сайт')) >= 4);
-    await page.getByRole('button', { name: '14 дн.' }).click();
-    await page.getByRole('button', { name: '7 дн.' }).click();
+  const guestAnswers = async (link, answer, extraPeople) => {
+    const g = await browser.newContext({ ...devices['Pixel 7'] });
+    const gp = await g.newPage();
+    watch(gp, 'guest');
+    await openInvitation(gp, link.replace(BASE + '/', '') + '&quality=lite');
+    const expected = link === created[yesName] ? yesName : noName;
+    await gp.getByRole('heading', { name: /Урматтуу/ }).getByText(expected).waitFor({ timeout: 10000 });
+    await gp.locator('#rsvp').scrollIntoViewIfNeeded();
+    // a choice is mandatory
+    let posted = 0;
+    gp.on('request', (r) => r.url().endsWith('/api/rsvp') && posted++);
+    await gp.getByRole('button', { name: 'Жөнөтүү' }).click();
+    await gp.getByRole('alert').getByText(/Жоопту тандаңыз/).waitFor();
+    assert.equal(posted, 0, 'no request without a choice');
+    await gp.getByRole('radio', { name: answer }).check();
+    if (answer === 'Келем') for (let i = 0; i < extraPeople; i++) await gp.getByRole('button', { name: 'Көбөйтүү' }).click();
+    else await gp.getByTestId('people-wrap').waitFor({ state: 'hidden' });
+    const res = gp.waitForResponse((r) => r.url().endsWith('/api/rsvp'));
+    await gp.getByRole('button', { name: 'Жөнөтүү' }).click();
+    const body = await (await res).json();
+    assert.equal(body.ok, true);
+    await gp.getByTestId('rsvp-saved').waitFor();
+    await g.close();
+    return body;
+  };
+
+  await step('Scenario 4: guests answer "Келем" (3 people) and "Келе албайм" (saved as 0)', async () => {
+    const a = await guestAnswers(created[yesName], 'Келем', 2);
+    assert.equal(a.people, 3);
+    const b = await guestAnswers(created[noName], 'Келе албайм', 0);
+    assert.equal(b.people, 0);
+    // answering again through the same personal link updates the record (no duplicate)
+    const c = await guestAnswers(created[yesName], 'Келем', 1);
+    assert.equal(c.people, 2);
+  });
+
+  await step('Scenario 5: answers appear in the answers tab with status, people and time', async () => {
+    await page.getByRole('button', { name: 'Обновить' }).click();
+    await page.getByRole('tab', { name: /Ответы/ }).click();
+    const yesRow = page.getByTestId('response').filter({ hasText: yesName });
+    await yesRow.waitFor();
+    assert.equal(await yesRow.count(), 1, 'one row per personal link (no duplicate)');
+    assert.match(await yesRow.getByTestId('response-status').innerText(), /Придёт\s+2 чел\./);
+    assert.match(await yesRow.innerText(), /\d{2}\.\d{2}\.\d{4}, \d{2}:\d{2}/);
+    const noRow = page.getByTestId('response').filter({ hasText: noName });
+    assert.equal((await noRow.getByTestId('response-status').innerText()).trim(), 'Не придёт');
+    await page.getByRole('button', { name: /^Придут/ }).click();
+    assert.equal(await page.getByTestId('response').filter({ hasText: noName }).count(), 0);
+    await page.getByRole('button', { name: /^Не придут/ }).click();
+    assert.equal(await page.getByTestId('response').filter({ hasText: yesName }).count(), 0);
+    await page.getByRole('button', { name: /^Все/ }).click();
+    await page.getByLabel('Поиск ответов').fill(String(stamp));
+    assert.equal(await page.getByTestId('response').count(), 2);
+    await page.getByLabel('Поиск ответов').fill('');
+    assert.equal(await page.getByRole('button', { name: /WhatsApp|Копировать/ }).count(), 0);
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/admin-responses.png`, fullPage: true });
+  });
+
+  await step('Scenario 6: statistics updated (unanswered are not counted as declined)', async () => {
+    await page.getByRole('tab', { name: /Статистика/ }).click();
+    assert.equal(await statVal('Всего приглашений'), before['Всего приглашений'] + 2);
+    assert.equal(await statVal('Ответили'), before['Ответили'] + 2);
+    assert.equal(await statVal('Придут (семей)'), before['Придут (семей)'] + 1);
+    assert.equal(await statVal('Отказались'), before['Отказались'] + 1);
+    assert.equal(await statVal('Людей придёт'), before['Людей придёт'] + 2);
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/admin-stats.png`, fullPage: true });
   });
 
+  await step('Scenario 7: "Посмотреть" preview does not count as a guest visit', async () => {
+    const views = await statVal('Просмотры сайта');
+    const pv = await ctx.newPage();
+    await pv.goto(created[noName] + '&preview=1&quality=lite');
+    await pv.waitForTimeout(1500);
+    await pv.close();
+    await page.getByRole('button', { name: 'Обновить' }).click();
+    await page.waitForTimeout(500);
+    assert.equal(await statVal('Просмотры сайта'), views);
+  });
+
+  await step('Admin: rename, search and delete only our temporary invitations', async () => {
+    await page.getByRole('tab', { name: /Приглашения/ }).click();
+    await page.getByLabel('Поиск приглашений').fill(String(stamp));
+    assert.equal(await page.getByTestId('invite').count(), 2);
+    const card = page.getByTestId('invite').filter({ hasText: noName });
+    await card.getByRole('button', { name: 'Изменить' }).click();
+    await page.getByLabel('Новое имя').fill(noName + ' 2');
+    await page.getByRole('button', { name: 'OK' }).click();
+    await page.getByTestId('invite-name').filter({ hasText: noName + ' 2' }).waitFor();
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/admin-invitations.png`, fullPage: true });
+    for (const n of [yesName, noName + ' 2']) {
+      await page.getByTestId('invite').filter({ hasText: n }).getByRole('button', { name: 'Удалить' }).click();
+      await page.getByTestId('invite-name').filter({ hasText: n }).waitFor({ state: 'detached' });
+    }
+    await page.getByLabel('Поиск приглашений').fill('');
+  });
+
   await step('Admin: CSV export downloads', async () => {
-    await page.getByRole('tab', { name: 'Гости' }).click();
     const [d] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'CSV' }).click()]);
     assert.equal(d.suggestedFilename(), 'aicholpon-guests.csv');
   });

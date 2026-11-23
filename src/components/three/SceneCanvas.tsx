@@ -7,7 +7,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import type { QualityProfile } from '@/lib/client/quality';
 import Envelope3D, { type EnvelopeApi } from './Envelope3D';
 import FloralScene, { columnClusters } from './FloralScene';
-import { Dust, Sparks, type SparkBurst } from './Particles';
+import { Bokeh, Dust, Sparks, type SparkBurst } from './Particles';
 import { CARD_FINAL, createRig, FOV, introTarget, layoutRig, scrollTarget, viewHeightAt, type Rig } from './rig';
 import { backdrop } from './textures';
 
@@ -20,6 +20,8 @@ export interface SceneApi {
   stats(): { calls: number; triangles: number; textures: number; geometries: number; programs: number };
   setScroll(px: number, viewportPx: number): void;
   setPointer(x: number, y: number): void;
+  /** Touch on the closed envelope (normalised to [-1, 1]) – it tilts towards the finger. */
+  press(x: number, y: number): void;
 }
 
 interface Props {
@@ -39,11 +41,22 @@ function CameraRig({ rig, continuous }: { rig: Rig; continuous: boolean }) {
   const parallax = useRef(new THREE.Vector2());
   const tmp = useMemo(() => ({ pos: new THREE.Vector3(), look: new THREE.Vector3() }), []);
   const lookCur = useRef(new THREE.Vector3());
+  const idle = useRef(0);
 
   useFrame((_, dt) => {
     const d = Math.min(dt, 0.05);
     const k = 1 - Math.exp(-d * 4);
     parallax.current.lerp(rig.pointer, k);
+    if (rig.mode === 'intro') {
+      // slow cinematic push-in towards the resting framing, with a barely-there orbit
+      idle.current += d;
+      const t = introTarget(rig);
+      t.pos.x += Math.sin(idle.current * 0.23) * 0.05;
+      t.pos.y += Math.sin(idle.current * 0.17) * 0.03;
+      const ki = 1 - Math.exp(-d * 0.75);
+      rig.pos.lerp(t.pos, ki);
+      rig.look.lerp(t.look, ki);
+    }
     if (rig.mode === 'scroll') {
       scrollTarget(rig, tmp);
       const ks = 1 - Math.exp(-d * 9);
@@ -61,6 +74,7 @@ function CameraRig({ rig, continuous }: { rig: Rig; continuous: boolean }) {
     if (!continuous) {
       const moving =
         rig.mode !== 'scroll' ||
+        Math.abs(tmp.pos.x - rig.pos.x) > 1e-4 ||
         rig.pos.distanceToSquared(tmp.pos) > 1e-7 ||
         parallax.current.distanceToSquared(rig.pointer) > 1e-6;
       if (moving) invalidate();
@@ -73,6 +87,8 @@ function CameraRig({ rig, continuous }: { rig: Rig; continuous: boolean }) {
 
 function Lighting({ profile, rig }: { profile: QualityProfile; rig: Rig }) {
   const key = useRef<THREE.DirectionalLight>(null);
+  const rake = useRef<THREE.DirectionalLight>(null);
+  const clock = useRef(0);
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
 
@@ -91,14 +107,27 @@ function Lighting({ profile, rig }: { profile: QualityProfile; rig: Rig }) {
     };
   }, [gl, scene]);
 
-  useFrame(() => {
+  useFrame((_, dt) => {
     const l = key.current;
-    if (!l) return;
+    const r = rake.current;
+    if (!l || !r) return;
+    clock.current += Math.min(dt, 0.05);
     // the key light (and its shadow frustum) travels with the camera
     const y = rig.pos.y;
     l.position.set(-2.4, y + 3.2, 5.5);
     l.target.position.set(0.3, y - 0.2, 0);
     l.target.updateMatrixWorld();
+    // a low grazing light slowly sweeps across the paper so the embossing and foil come alive;
+    // it is strongest on the closed envelope and settles to a soft accent afterwards
+    const sweep = Math.sin(clock.current * 0.35);
+    r.position.set(-3.2, y + 1.2 + sweep * 1.4, 0.75);
+    r.target.position.set(0.4, y, 0);
+    r.target.updateMatrixWorld();
+    const want = rig.mode === 'intro' ? 1.15 : 0.45;
+    r.intensity += (want - r.intensity) * Math.min(1, dt * 1.5);
+    // warmer key towards the end of the invitation (subtle grading by scroll)
+    const p = Math.min(1, rig.scrollPx / Math.max(1, rig.viewportPx) / 6);
+    l.color.setRGB(1, 0.953 - p * 0.03, 0.886 - p * 0.06);
   });
 
   return (
@@ -121,14 +150,26 @@ function Lighting({ profile, rig }: { profile: QualityProfile; rig: Rig }) {
         shadow-radius={6}
       />
       <directionalLight color="#d4e2ff" intensity={0.55} position={[3, -1.5, 3]} />
+      <directionalLight ref={rake} color="#ffe6bf" intensity={1.15} />
     </>
   );
 }
 
 /* ---------------- Backdrop (the table the envelope lies on) ---------------- */
 
-function Backdrop({ size }: { size: number }) {
+const TINTS = [new THREE.Color('#ffffff'), new THREE.Color('#eef3ff'), new THREE.Color('#f6f1ff'), new THREE.Color('#fff5e8')];
+
+function Backdrop({ size, rig }: { size: number; rig: Rig }) {
   const set = useMemo(() => backdrop(size), [size]);
+  const material = useRef<THREE.MeshStandardMaterial>(null);
+  // the "table" slowly changes mood from pearl → ice blue → lilac → champagne as the story unfolds
+  useFrame(() => {
+    const m = material.current;
+    if (!m) return;
+    const p = Math.min(TINTS.length - 1.001, Math.max(0, rig.scrollPx / Math.max(1, rig.viewportPx) / 2));
+    const i = Math.floor(p);
+    m.color.copy(TINTS[i]!).lerp(TINTS[i + 1]!, p - i);
+  });
   useEffect(() => () => set.dispose(), [set]);
   const H = 60;
   const W = 14;
@@ -139,7 +180,7 @@ function Backdrop({ size }: { size: number }) {
   return (
     <mesh position={[0, CARD_FINAL.y - H / 2 + 6, -0.03]} receiveShadow>
       <planeGeometry args={[W, H]} />
-      <meshStandardMaterial map={set.map} bumpMap={set.bumpMap} bumpScale={0.6} roughness={0.75} metalness={0} />
+      <meshStandardMaterial ref={material} map={set.map} bumpMap={set.bumpMap} bumpScale={0.6} roughness={0.75} metalness={0} />
     </mesh>
   );
 }
@@ -183,16 +224,21 @@ function Stage({
   const invalidate = useThree((s) => s.invalidate);
   const sparks = useRef<SparkBurst>(null);
   const envelopeApi = useRef<EnvelopeApi | null>(null);
-  const time = useMemo(() => ({ value: 0 }), []);
+  const time = rig.flora.uTime;
   const [built, setBuilt] = useState(false);
+  const [extras, setExtras] = useState(false);
+  const placed = useRef(false);
 
   // layout on resize
   const aspect = size.width / Math.max(1, size.height);
   layoutRig(rig, aspect, size.height);
   useEffect(() => {
-    if (rig.mode === 'intro') {
+    if (rig.mode === 'intro' && !placed.current) {
+      // start a little further and lower: the camera then glides in (see CameraRig)
+      placed.current = true;
       const t = introTarget(rig);
-      rig.pos.copy(t.pos);
+      rig.pos.copy(t.pos).multiply(new THREE.Vector3(1, 1, 1.3));
+      rig.pos.y -= 0.18;
       rig.look.copy(t.look);
     }
     invalidate();
@@ -231,6 +277,8 @@ function Stage({
       .then(() => {
         if (cancelled) return;
         setLoop('always');
+        // secondary effects (dust, bokeh, drifting petals) come a moment after the hero frame
+        window.setTimeout(() => !cancelled && setExtras(true), 900);
         raf = requestAnimationFrame(() => {
           raf = requestAnimationFrame(() =>
         onReady({
@@ -260,6 +308,10 @@ function Stage({
             rig.viewportPx = Math.max(1, vp);
             invalidate();
           },
+          press: (x, y) => {
+            rig.press.set(THREE.MathUtils.clamp(x, -1, 1), THREE.MathUtils.clamp(y, -1, 1), 1);
+            invalidate();
+          },
           setPointer: (x, y) => {
             rig.pointer.set(THREE.MathUtils.clamp(x, -1, 1), THREE.MathUtils.clamp(y, -1, 1));
             invalidate();
@@ -278,11 +330,12 @@ function Stage({
     <>
       <CameraRig rig={rig} continuous={profile.continuousScroll} />
       <Lighting profile={profile} rig={rig} />
-      <Backdrop size={profile.tier === 'high' ? 512 : 256} />
+      <Backdrop size={profile.tier === 'high' ? 512 : 256} rig={rig} />
       <Envelope3D profile={profile} rig={rig} sparks={sparks} register={register} onBuilt={onBuilt} />
-      <FloralScene profile={profile} columns={columns} time={time} />
+      <FloralScene profile={profile} columns={columns} uniforms={rig.flora} extras={extras} />
       <Sparks count={profile.tier === 'high' ? 160 : 90} apiRef={sparks} />
-      <Dust count={profile.particles} />
+      {extras && <Dust count={profile.particles} />}
+      {extras && <Bokeh count={profile.tier === 'high' ? 14 : 8} />}
       <PerfGuard profile={profile} onDegrade={onDegrade} />
     </>
   );

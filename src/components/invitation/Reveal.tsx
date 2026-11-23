@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, type ReactNode } from 'react';
+import { airShimmer } from '@/lib/client/audio';
 
 /**
  * Scroll-triggered entrance for a section (no animation library on the critical path):
@@ -30,6 +31,7 @@ export function Reveal({ children, className }: { children: ReactNode; className
           window.setTimeout(() => (w.dataset.done = 'true'), 2300 + i * 250);
         });
         el.classList.add('is-in');
+        airShimmer();
       },
       { threshold: 0.2 },
     );

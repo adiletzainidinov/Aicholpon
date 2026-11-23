@@ -159,6 +159,8 @@ export default function Envelope3D({
   );
   useEffect(() => () => Object.values(geo).forEach((g) => g.dispose()), [geo]);
 
+  const bend = useMemo(() => ({ value: 0 }), []);
+
   // ---- materials ----
   const mats = useMemo(() => {
     if (!built) return null;
@@ -184,6 +186,7 @@ export default function Envelope3D({
       roughnessMap: built.seal.roughnessMap ?? null,
       emissive: new THREE.Color('#ffcf7a'),
       emissiveIntensity: 0,
+      envMapIntensity: 1.6,
     };
     const seal = profile.physical
       ? new THREE.MeshPhysicalMaterial({ ...goldParams, clearcoat: 0.6, clearcoatRoughness: 0.25 })
@@ -217,12 +220,16 @@ export default function Envelope3D({
       depthWrite: false,
       map: makeGlow(),
     });
+    const flapFront = paper(built.flap, 1.4);
+    const flapEdge = edge.clone();
+    const flapLiner = new THREE.MeshStandardMaterial({ map: built.flap.liner.map, roughness: 0.9, side: THREE.BackSide });
+    [flapFront, flapEdge, flapLiner].forEach((m) => addBend(m, bend));
     return {
       back: [paper(built.pocket, 0.8), edge],
       pocket: [paper(built.pocket, 1.2), edge],
       liner: new THREE.MeshStandardMaterial({ map: built.inner.map, bumpMap: built.inner.bumpMap, bumpScale: 0.6, roughness: 0.9 }),
-      flap: [paper(built.flap, 1.4), edge],
-      flapLiner: new THREE.MeshStandardMaterial({ map: built.flap.liner.map, roughness: 0.9, side: THREE.BackSide }),
+      flap: [flapFront, flapEdge],
+      flapLiner,
       edge,
       seal,
       half,
@@ -231,7 +238,7 @@ export default function Envelope3D({
       name,
       glow,
     };
-  }, [built, profile.physical]);
+  }, [built, profile.physical, bend]);
 
   useEffect(
     () => () => {
@@ -266,10 +273,14 @@ export default function Envelope3D({
     if (!envelope.current || rig.mode !== 'intro') return;
     idle.current += dt;
     const t = idle.current;
-    envelope.current.position.z = Math.sin(t * 1.1) * 0.012;
-    envelope.current.rotation.x = Math.sin(t * 0.7) * 0.025;
-    envelope.current.rotation.y = Math.sin(t * 0.5) * 0.03;
-    if (mats) mats.seal.emissiveIntensity = 0.04 + Math.max(0, Math.sin(t * 2.2)) * 0.06;
+    // a touch tilts the envelope towards the finger and presses it into the silk, then it springs back
+    const pr = rig.press;
+    pr.z = Math.max(0, pr.z - dt * 1.6);
+    const s = pr.z * pr.z * (3 - 2 * pr.z);
+    envelope.current.position.z = Math.sin(t * 1.1) * 0.012 - s * 0.03;
+    envelope.current.rotation.x = Math.sin(t * 0.7) * 0.025 - pr.y * s * 0.09;
+    envelope.current.rotation.y = Math.sin(t * 0.5) * 0.03 + pr.x * s * 0.11;
+    if (mats) mats.seal.emissiveIntensity = 0.04 + Math.max(0, Math.sin(t * 2.2)) * 0.06 + s * 0.25;
   });
 
   // ---- API ----
@@ -310,9 +321,10 @@ export default function Envelope3D({
           // 1. camera leans in towards the seal
           tl.to(rig.pos, { y: sealY * 0.7, z: rig.introDistance * 0.74, duration: 1.3 }, 0).to(rig.look, { y: sealY * 0.8, duration: 1.3 }, 0);
           // 2. seal reacts: press, glow, crack
-          tl.to(sg.scale, { x: 0.93, y: 0.93, z: 0.85, duration: 0.14, ease: 'power2.out' }, 0.05)
+          tl.to(sg.position, { z: sg.position.z + 0.05, duration: 0.4, ease: 'power2.out' }, 0.12)
+            .to(sg.scale, { x: 0.93, y: 0.93, z: 0.85, duration: 0.14, ease: 'power2.out' }, 0.05)
             .to(sg.scale, { x: 1.06, y: 1.06, z: 1.06, duration: 0.3, ease: 'back.out(3)' }, 0.19)
-            .to(mats.seal, { emissiveIntensity: 0.9, duration: 0.3, ease: 'power1.in' }, 0.1)
+            .to(mats.seal, { emissiveIntensity: 0.38, duration: 0.3, ease: 'power1.in' }, 0.1)
             .to(mats.glow, { opacity: 0.55, duration: 0.25 }, 0.3)
             .to(glow.current!.scale, { x: 0.9, y: 0.9, duration: 0.9, ease: 'power2.out' }, 0.3)
             .to(mats.glow, { opacity: 0, duration: 0.8 }, 0.6)
@@ -326,11 +338,12 @@ export default function Envelope3D({
                 }
                 sparks.current?.fire(sg.getWorldPosition(new THREE.Vector3()));
                 chime();
+                haptic([12, 40, 18]);
               },
               undefined,
               0.5,
             )
-            .to(mats.half, { emissiveIntensity: 0.0, duration: 0.6 }, 0.5);
+            .fromTo(mats.half, { emissiveIntensity: 0.3 }, { emissiveIntensity: 0.08, duration: 0.8 }, 0.5);
           for (const [ref, s] of [
             [sealL, -1],
             [sealR, 1],
@@ -340,10 +353,18 @@ export default function Envelope3D({
               .to(m.rotation, { z: -s * 0.55, y: s * 0.7, x: 0.3, duration: 0.9, ease: 'power2.out' }, 0.52)
               .to(m.position, { y: () => m.position.y - 0.9, duration: 0.7, ease: 'power2.in' }, 1.15);
           }
-          tl.to(mats.half, { opacity: 0, duration: 0.5, ease: 'power1.in' }, 1.25);
+          tl.to(mats.half, { opacity: 0, duration: 0.5, ease: 'power1.in' }, 1.25)
+            // fully transparent meshes still cast shadows – hide them once they have faded
+            .call(() => [sealL.current, sealR.current].forEach((h) => h && (h.visible = false)), undefined, 1.8);
           // 3. flap opens (towards the camera, over the top), then tucks behind
           tl.call(() => paperSwish(0.9), undefined, 0.95)
             .to(f.rotation, { x: -Math.PI * 1.03, duration: 1.35, ease: 'power2.inOut' }, 0.95)
+            // the paper lags behind the swing, then relaxes with a tiny overshoot
+            .to(bend, { value: -0.11, duration: 0.6, ease: 'sine.out' }, 0.95)
+            .to(bend, { value: 0.035, duration: 0.55, ease: 'sine.inOut' }, 1.55)
+            .to(bend, { value: 0, duration: 0.5, ease: 'sine.out' }, 2.1)
+            // the hydrangeas around the envelope gently step aside to make room
+            .to(rig.flora.uSpread, { value: 1, duration: 2.2, ease: 'power2.inOut' }, 0.9)
             .to(f.position, { z: -0.006, duration: 0.45, ease: 'power1.inOut' }, 1.75);
           // 4. card slides out, the camera follows it up
           tl.call(() => paperSwish(1.1, 0), undefined, 2.0)
@@ -378,7 +399,7 @@ export default function Envelope3D({
       },
     };
     register(api);
-  }, [built, mats, register, onBuilt, rig, sparks, invalidate]);
+  }, [built, mats, register, onBuilt, rig, sparks, invalidate, bend]);
 
   if (!built || !mats) return null;
 
@@ -427,6 +448,26 @@ export default function Envelope3D({
       </group>
     </group>
   );
+}
+
+/** Paper flex: bends the flap along its length while it swings (vertex shader, no CPU cost). */
+function addBend(material: THREE.Material, uniform: { value: number }) {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uBend = uniform;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uBend;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n  transformed.z += uBend * transformed.y * transformed.y;');
+  };
+  material.customProgramCacheKey = () => 'flap-bend';
+}
+
+function haptic(pattern: number[]) {
+  try {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    navigator.vibrate?.(pattern);
+  } catch {
+    /* unsupported (e.g. iOS Safari) – silently ignored */
+  }
 }
 
 function yieldToMain() {
