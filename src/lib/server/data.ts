@@ -9,7 +9,14 @@ export async function getInvitee(token: string): Promise<{ name: string } | null
     const guest = mockDb.guests.find((x) => x.invite_token === token);
     return guest ? { name: guest.name } : null;
   }
-  const rows = await rpc('aicholpon_invitee', { p_token: token });
+  let rows: unknown;
+  try {
+    rows = await rpc('aicholpon_invitee', { p_token: token });
+  } catch (e) {
+    // Postgres rejects tokens of the wrong shape (e.g. not a UUID) – that simply means "no such invitation"
+    if (e instanceof UpstreamError && e.status === 400) return null;
+    throw e;
+  }
   const first = Array.isArray(rows) ? (rows[0] as { name?: unknown } | undefined) : undefined;
   return first && typeof first.name === 'string' ? { name: first.name } : null;
 }
