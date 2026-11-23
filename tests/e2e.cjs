@@ -304,6 +304,16 @@ async function openInvitation(page, query) {
     assert.equal(await statVal('Придут (семей)'), before['Придут (семей)'] + 1);
     assert.equal(await statVal('Отказались'), before['Отказались'] + 1);
     assert.equal(await statVal('Людей придёт'), before['Людей придёт'] + 2);
+    // only two outcomes exist: no "unanswered" figures anywhere in the statistics UI
+    const statsText = await page.locator('main').innerText();
+    assert.ok(!/не ответили|нет ответа|без ответа/i.test(statsText), 'no unanswered metrics in statistics');
+    // the split is computed between answers only
+    const yes = await statVal('Придут (семей)');
+    const no = await statVal('Отказались');
+    const split = await page.getByTestId('answer-split').innerText();
+    const pct = Math.round((yes / (yes + no)) * 100);
+    assert.ok(split.includes(`${pct}%`) && split.includes(`${100 - pct}%`), `split ${pct}/${100 - pct}: ${split}`);
+    assert.ok(split.includes(`Ответили ${yes + no}`), split);
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/admin-stats.png`, fullPage: true });
   });
 
