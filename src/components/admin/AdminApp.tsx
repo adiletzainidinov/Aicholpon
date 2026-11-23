@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import type { Guest, VisitEvent } from '@/lib/shared/types';
 import { Analytics } from './Analytics';
-import { adminApi, AuthError } from './api';
-import { GuestManagement } from './GuestManagement';
+import { adminApi, AuthError, exportCsv, hasAnswered } from './api';
+import { Invitations } from './Invitations';
+import { Responses } from './Responses';
 
 type View = 'checking' | 'login' | 'dashboard';
 
@@ -15,7 +16,7 @@ export default function AdminApp() {
   const [busy, setBusy] = useState(false);
   const [guests, setGuests] = useState<Guest[]>([]);
   const [events, setEvents] = useState<VisitEvent[]>([]);
-  const [tab, setTab] = useState<'guests' | 'stats'>('guests');
+  const [tab, setTab] = useState<'invites' | 'responses' | 'stats'>('invites');
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -29,10 +30,12 @@ export default function AdminApp() {
 
   const load = useCallback(async () => {
     const [g, s] = await Promise.all([adminApi.list(), adminApi.stats()]);
-    setGuests(Array.isArray(g) ? g : []);
+    const list = Array.isArray(g) ? g : [];
+    setGuests(list);
     setEvents(Array.isArray(s) ? s : []);
     setUpdatedAt(new Date());
     setError('');
+    return list;
   }, []);
 
   const refresh = useCallback(async () => {
@@ -129,28 +132,48 @@ export default function AdminApp() {
 
         {view === 'dashboard' && (
           <>
-            <nav className="mb-5 grid grid-cols-2 gap-1 rounded-2xl bg-white p-1 shadow-[0_4px_18px_#314b7312]" role="tablist">
+            <nav className="mb-4 grid grid-cols-3 gap-1 rounded-2xl bg-white p-1 shadow-[0_4px_18px_#314b7312]" role="tablist">
               {(
                 [
-                  ['guests', 'Гости'],
-                  ['stats', 'Статистика'],
+                  ['invites', 'Приглашения', guests.length],
+                  ['responses', 'Ответы', guests.filter(hasAnswered).length],
+                  ['stats', 'Статистика', null],
                 ] as const
-              ).map(([k, label]) => (
-                <button key={k} role="tab" aria-selected={tab === k} type="button" onClick={() => setTab(k)} className={`rounded-xl py-2.5 ${tab === k ? 'bg-[#415d9b] text-white' : ''}`}>
-                  {label}
+              ).map(([k, label, n]) => (
+                <button
+                  key={k}
+                  role="tab"
+                  aria-selected={tab === k}
+                  type="button"
+                  onClick={() => setTab(k)}
+                  className={`min-w-0 rounded-xl px-0.5 py-2.5 text-[13px] leading-tight tracking-tight min-[360px]:text-[14px] min-[380px]:text-[15px] min-[380px]:tracking-normal ${tab === k ? 'bg-[#415d9b] text-white' : ''}`}
+                >
+                  <span className="block overflow-hidden text-ellipsis whitespace-nowrap">{label}</span>
+                  {n !== null && <span className={`block text-[12px] tabular-nums ${tab === k ? 'text-white/80' : 'text-[#6e7f9e]'}`}>{n}</span>}
                 </button>
               ))}
             </nav>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[13px] text-[#6e7f9e]">
+                {updatedAt ? `Обновлено в ${updatedAt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}` : ''}
+              </p>
+              <div className="flex gap-2">
+                <button type="button" className="adm-btn adm-btn--alt" onClick={refresh} disabled={refreshing}>
+                  {refreshing ? 'Обновляем…' : 'Обновить'}
+                </button>
+                <button type="button" className="adm-btn adm-btn--alt" onClick={() => exportCsv(guests)}>
+                  CSV
+                </button>
+              </div>
+            </div>
             {error && (
               <p className="mb-4 rounded-xl bg-[#fbe9ec] px-4 py-3 text-[14px] text-[#aa3446]" role="alert">
                 {error}
               </p>
             )}
-            {tab === 'guests' ? (
-              <GuestManagement guests={guests} reload={load} onError={handleError} />
-            ) : (
-              <Analytics guests={guests} events={events} updatedAt={updatedAt} onRefresh={refresh} refreshing={refreshing} />
-            )}
+            {tab === 'invites' && <Invitations guests={guests} reload={load} onError={handleError} />}
+            {tab === 'responses' && <Responses guests={guests} />}
+            {tab === 'stats' && <Analytics guests={guests} events={events} />}
           </>
         )}
       </main>

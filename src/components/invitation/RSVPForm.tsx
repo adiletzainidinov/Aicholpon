@@ -114,10 +114,10 @@ export function RSVPForm() {
         />
       </label>
 
-      <fieldset className="grid gap-3 border-0 p-0">
+      <fieldset className="grid gap-3 border-0 p-0" aria-required="true" aria-invalid={status.kind === 'error' && !answer}>
         <legend className="eyebrow mb-3 w-full text-center">Тойго келесизби?</legend>
         <label className="choice">
-          <input type="radio" name="answer" value="yes" checked={answer === 'yes'} onChange={() => setAnswer('yes')} />
+          <input type="radio" name="answer" value="yes" required checked={answer === 'yes'} onChange={() => setAnswer('yes')} />
           <span>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="#2f3f7a" aria-hidden>
               <path d="M12 21s-7.5-4.6-9.6-9.3C.9 8.4 3 4.8 6.6 4.8c2 0 3.6 1.1 5.4 3 1.8-1.9 3.4-3 5.4-3 3.6 0 5.7 3.6 4.2 6.9C19.5 16.4 12 21 12 21Z" />
@@ -126,7 +126,7 @@ export function RSVPForm() {
           </span>
         </label>
         <label className="choice">
-          <input type="radio" name="answer" value="no" checked={answer === 'no'} onChange={() => setAnswer('no')} />
+          <input type="radio" name="answer" value="no" required checked={answer === 'no'} onChange={() => setAnswer('no')} />
           <span>Келе албайм</span>
         </label>
       </fieldset>

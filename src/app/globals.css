@@ -864,3 +864,61 @@ h2,
 .rsvp-shortcut svg {
   color: #e9d39c;
 }
+
+.adm-card {
+  border-radius: 16px;
+  background: #fff;
+  padding: 16px;
+  box-shadow: 0 4px 18px #314b7312;
+}
+
+.adm-empty {
+  border: 1px dashed #d5deef;
+  border-radius: 16px;
+  padding: 24px;
+  text-align: center;
+  font-size: 14px;
+  color: #8a97b3;
+}
+
+.adm-chip {
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.adm-chip--yes { background: #e3f3ea; color: #24764b; }
+.adm-chip--no { background: #f8e5e8; color: #aa3446; }
+.adm-chip--wait { background: #f5efdf; color: #8a6d2c; }
+
+.adm-btn--link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.adm-btn--wa {
+  background: #1f9d55;
+  color: #fff;
+}
+
+.adm-btn {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.adm-filter {
+  min-height: 38px;
+  border-radius: 999px;
+  padding: 0 14px;
+  font-size: 14px;
+  background: #fff;
+  color: #3b5492;
+  box-shadow: 0 0 0 1px #bac8e2 inset;
+}
+.adm-filter.is-on {
+  background: #415d9b;
+  color: #fff;
+  box-shadow: none;
+}
