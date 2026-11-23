@@ -18,6 +18,15 @@ function Stat({ label, value, accent, hint }: { label: string; value: number | s
   );
 }
 
+/** 1 семья, 2 семьи, 5 семей, 21 семья … */
+function families(n: number) {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return 'семья';
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 'семьи';
+  return 'семей';
+}
+
 const startOfDay = (t: number) => {
   const d = new Date(t);
   d.setHours(0, 0, 0, 0);
@@ -123,11 +132,11 @@ export function Analytics({ guests, events }: { guests: Guest[]; events: VisitEv
   const opens = count('open');
   const yes = guests.filter((g) => g.attending === true);
   const no = guests.filter((g) => g.attending === false);
-  const pending = guests.filter((g) => g.attending == null);
   const people = yes.reduce((n, g) => n + (g.people ?? 0), 0);
   const viewsToday = events.filter((e) => e.event_type === 'view' && new Date(e.created_at).getTime() >= today).length;
   const views7 = events.filter((e) => e.event_type === 'view' && now - new Date(e.created_at).getTime() < 7 * DAY).length;
   const answered = yes.length + no.length;
+  const yesPct = answered ? Math.round((yes.length / answered) * 100) : 0;
 
   return (
     <section className="grid min-w-0 grid-cols-1 gap-6">
@@ -140,33 +149,29 @@ export function Analytics({ guests, events }: { guests: Guest[]; events: VisitEv
           <Stat label="Отказались" value={no.length} accent="#aa3446" />
           <Stat label="Людей придёт" value={people} accent="#24764b" />
         </div>
-        <p className="mt-2 text-[13px] text-[#6e7f9e]">
-          Ещё не ответили: <b className="tabular-nums text-[#8a6d2c]">{pending.length}</b> — они не считаются отказавшимися.
-        </p>
-        {guests.length > 0 && (
-          <div className="mt-3 rounded-2xl bg-white p-4 shadow-[0_4px_18px_#314b7312]">
+        {answered > 0 && (
+          // shares are computed between received answers only: «Придут» vs «Не придут»
+          <div className="mt-3 rounded-2xl bg-white p-4 shadow-[0_4px_18px_#314b7312]" data-testid="answer-split">
             <div className="flex justify-between gap-2 text-[13px] text-[#6e7f9e]">
               <span>
-                Ответили <b className="tabular-nums text-[#273d6b]">{answered}</b> из <span className="tabular-nums">{guests.length}</span>
+                Ответили <b className="tabular-nums text-[#273d6b]">{answered}</b>
               </span>
-              <b className="tabular-nums text-[#273d6b]">{Math.round((answered / guests.length) * 100)}%</b>
+              <span className="tabular-nums">
+                <b className="text-[#24764b]">{yesPct}%</b> · <b className="text-[#aa3446]">{100 - yesPct}%</b>
+              </span>
             </div>
-            <div className="mt-2 flex h-2.5 overflow-hidden rounded-full bg-[#eef2fa]" role="img" aria-label={`Придут ${yes.length}, не придут ${no.length}, нет ответа ${pending.length}`}>
-              <span className="bg-[#3c9a69]" style={{ width: `${(yes.length / guests.length) * 100}%` }} />
-              <span className="bg-[#d0566a]" style={{ width: `${(no.length / guests.length) * 100}%` }} />
+            <div className="mt-2 flex h-2.5 overflow-hidden rounded-full" role="img" aria-label={`Придут ${yes.length} (${yesPct}%), не придут ${no.length} (${100 - yesPct}%)`}>
+              <span className="bg-[#3c9a69]" style={{ width: `${(yes.length / answered) * 100}%` }} />
+              <span className="bg-[#d0566a]" style={{ width: `${(no.length / answered) * 100}%` }} />
             </div>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-[#6e7f9e]">
               <span>
                 <i className="mr-1 inline-block size-2 rounded-full bg-[#3c9a69]" />
-                Придут
+                Придут: {yes.length} {families(yes.length)}, {people} чел.
               </span>
               <span>
                 <i className="mr-1 inline-block size-2 rounded-full bg-[#d0566a]" />
-                Не придут
-              </span>
-              <span>
-                <i className="mr-1 inline-block size-2 rounded-full bg-[#eef2fa] ring-1 ring-[#d5deef]" />
-                Нет ответа
+                Не придут: {no.length}
               </span>
             </div>
           </div>

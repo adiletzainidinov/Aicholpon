@@ -18,7 +18,7 @@
   color-scheme: light;
   --bg: #d3dae6;
   --text: #2f3f7a;
-  --muted: #5f6b94;
+  --muted: #47538a;
   --halo: 0 0 14px rgb(246 243 238 / 0.95), 0 0 2px rgb(246 243 238 / 0.9);
 }
 
@@ -288,8 +288,8 @@ html.locked body {
 }
 
 .eyebrow {
-  font-size: 12.5px;
-  letter-spacing: 0.34em;
+  font-size: 13px;
+  letter-spacing: 0.3em;
   text-transform: uppercase;
   color: var(--muted);
   font-weight: 600;

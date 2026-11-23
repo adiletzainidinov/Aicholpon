@@ -14,7 +14,7 @@ export const PALETTE = {
   ice: '#dfe8f5',
   blue: '#7d98cf',
   deep: '#2f3f7a',
-  ink: '#24336e',
+  ink: '#1c2a62',
   silver: '#b9c3d3',
   champagne: '#eadcc0',
   gold: '#c9a55c',
@@ -595,26 +595,44 @@ function foilText(
   font: string,
   x: number,
   y: number,
-  opts: { ink?: string; foil?: boolean; letterSpacing?: number } = {},
+  opts: { ink?: string; foil?: boolean; letterSpacing?: number; weight?: number; maxWidth?: number } = {},
 ) {
-  const all: [CanvasRenderingContext2D, string][] = [
-    [c.col.ctx, opts.foil ? PALETTE.gold : (opts.ink ?? PALETTE.ink)],
-    [c.hei.ctx, opts.foil ? '#ffffff' : '#9a9a9a'],
+  // Hairline serifs fade into the paper once the texture is minified on a phone, so glyphs get a
+  // fine same-colour stroke (≈ one weight heavier) and foil gets a soft pressed-in shadow.
+  const px = Number(/(\d+)px/.exec(font)?.[1] ?? 40);
+  const stroke = px * (opts.weight ?? (opts.foil ? 0.028 : 0.04));
+  const all: [CanvasRenderingContext2D, string, 'col' | 'hei' | 'metal' | 'rough'][] = [
+    [c.col.ctx, opts.foil ? FOIL_INK : (opts.ink ?? PALETTE.ink), 'col'],
+    [c.hei.ctx, opts.foil ? '#ffffff' : '#9a9a9a', 'hei'],
   ];
   if (opts.foil) {
-    all.push([c.metal.ctx, '#ffffff'], [c.rough.ctx, '#2a2a2a']);
+    // less mirror-like than before: keeps its gold colour instead of reflecting the white studio
+    all.push([c.metal.ctx, '#b8b8b8', 'metal'], [c.rough.ctx, '#5c5c5c', 'rough']);
   }
-  for (const [ctx, style] of all) {
+  for (const [ctx, style, kind] of all) {
     ctx.save();
     ctx.font = font;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
     if (opts.letterSpacing) (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = `${opts.letterSpacing}px`;
+    if (kind === 'col' && opts.foil) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(92, 62, 14, 0.38)';
+      ctx.fillText(text, x + px * 0.02, y + px * 0.03, opts.maxWidth);
+      ctx.restore();
+    }
     ctx.fillStyle = style;
-    ctx.fillText(text, x, y);
+    ctx.strokeStyle = style;
+    ctx.lineWidth = stroke;
+    ctx.strokeText(text, x, y, opts.maxWidth);
+    ctx.fillText(text, x, y, opts.maxWidth);
     ctx.restore();
   }
 }
+
+/** Richer, deeper gold for foil lettering (the decorative frame keeps PALETTE.gold). */
+const FOIL_INK = '#ad7d22';
 
 function sprig(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, dir: number, style: string) {
   ctx.save();
@@ -656,15 +674,15 @@ export function cardInside(size: number, aspect: number, serif: string): Surface
   c.col.ctx.fillStyle = 'rgba(120,110,100,0.08)';
   c.col.ctx.fillRect(0, h / 2 - w * 0.004, w, w * 0.008);
 
-  foilText(c, 'КЫЗ УЗАТУУ', `600 ${Math.round(w * 0.05)}px ${serif}`, w / 2, h * 0.2, { foil: true, letterSpacing: w * 0.012 });
+  foilText(c, 'КЫЗ УЗАТУУ', `600 ${Math.round(w * 0.056)}px ${serif}`, w / 2, h * 0.2, { foil: true, letterSpacing: w * 0.01 });
   sprig(c.col.ctx, w / 2 - w * 0.06, h * 0.255, w * 0.22, -1, PALETTE.gold);
   sprig(c.col.ctx, w / 2 + w * 0.06, h * 0.255, w * 0.22, 1, PALETTE.gold);
   sprig(c.metal.ctx, w / 2 - w * 0.06, h * 0.255, w * 0.22, -1, '#fff');
   sprig(c.metal.ctx, w / 2 + w * 0.06, h * 0.255, w * 0.22, 1, '#fff');
-  foilText(c, 'Сиздерди кыз узатуу тоюна', `600 ${Math.round(w * 0.054)}px ${serif}`, w / 2, h * 0.615, { ink: PALETTE.ink });
-  foilText(c, 'чакырабыз', `600 ${Math.round(w * 0.054)}px ${serif}`, w / 2, h * 0.658, { ink: PALETTE.ink });
-  foilText(c, '12 · 12 · 2026', `600 ${Math.round(w * 0.08)}px ${serif}`, w / 2, h * 0.75, { foil: true, letterSpacing: w * 0.006 });
-  foilText(c, 'ИШЕМБИ · 16:00 · РЕСТОРАН «АДЕМ»', `600 ${Math.round(w * 0.038)}px ${serif}`, w / 2, h * 0.81, { ink: PALETTE.ink, letterSpacing: w * 0.006 });
+  foilText(c, 'Сиздерди кыз узатуу тоюна', `600 ${Math.round(w * 0.06)}px ${serif}`, w / 2, h * 0.612, { ink: PALETTE.ink, letterSpacing: w * 0.001, maxWidth: w * 0.84 });
+  foilText(c, 'чакырабыз', `600 ${Math.round(w * 0.06)}px ${serif}`, w / 2, h * 0.66, { ink: PALETTE.ink, letterSpacing: w * 0.001 });
+  foilText(c, '12 · 12 · 2026', `600 ${Math.round(w * 0.088)}px ${serif}`, w / 2, h * 0.752, { foil: true, letterSpacing: w * 0.005 });
+  foilText(c, 'ИШЕМБИ · 16:00 · РЕСТОРАН «АДЕМ»', `600 ${Math.round(w * 0.044)}px ${serif}`, w / 2, h * 0.815, { ink: PALETTE.ink, letterSpacing: w * 0.003, maxWidth: w * 0.82 });
   // small heart ornament
   const heart = (ctx: CanvasRenderingContext2D, style: string) => {
     ctx.save();
@@ -695,7 +713,7 @@ export function cardCover(size: number, aspect: number, script: string, serif: s
   damaskField(c.hei.ctx, w, h, w * 0.22, 'rgba(255,255,255,0.35)', w * 0.004);
   foilFrame({ col: c.col.ctx, hei: c.hei.ctx, metal: c.metal.ctx, rough: c.rough.ctx }, w, h, w * 0.06);
   foilText(c, 'А', `${Math.round(h * 0.55)}px ${script}`, w / 2, h * 0.5, { foil: true });
-  foilText(c, 'КЫЗ УЗАТУУ · 2026', `500 ${Math.round(w * 0.032)}px ${serif}`, w / 2, h * 0.86, { foil: true, letterSpacing: w * 0.01 });
+  foilText(c, 'КЫЗ УЗАТУУ · 2026', `600 ${Math.round(w * 0.038)}px ${serif}`, w / 2, h * 0.86, { foil: true, letterSpacing: w * 0.008, maxWidth: w * 0.8 });
   return surface(c.col.c, c.hei.c, c.rough.c, c.metal.c);
 }
 
