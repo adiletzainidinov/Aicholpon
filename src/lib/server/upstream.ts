@@ -34,7 +34,8 @@ async function request(path: string, body: unknown, withKey: boolean, extraHeade
       json && typeof json === 'object' && 'error' in json && typeof (json as { error: unknown }).error === 'string'
         ? (json as { error: string }).error
         : `Ошибка сервера (${res.status})`;
-    throw new UpstreamError(msg, res.status === 401 || res.status === 403 ? 401 : 502);
+    // keep "the request itself was rejected" (4xx, e.g. a malformed token) apart from outages (5xx)
+    throw new UpstreamError(msg, res.status === 401 || res.status === 403 ? 401 : res.status >= 400 && res.status < 500 ? 400 : 502);
   }
   return json;
 }
